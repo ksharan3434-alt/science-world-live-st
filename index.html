@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Science World — Live Class</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --ink:#20302c; --bg:#f3efe4; --panel:#ffffff;
+    --accent:#2f6f5e; --accent-dark:#204d41; --accent-soft:#e2ede7;
+    --danger:#a4402f; --danger-soft:#f6e5e0; --muted:#6b7a75;
+    --red:#e0332b; --red-dark:#a41f19; --yellow:#fff3b0; --yellow-line:#e8c93a;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+
+  .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
+  .logo-text{ color:#fff; font-weight:700; font-size:1.15rem; }
+  .logo-badge{ background:var(--red); color:#fff; font-weight:800; font-size:0.82rem; padding:4px 9px; border-radius:5px; box-shadow:0 2px 0 var(--red-dark); }
+
+  .page{ max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
+  .back-link{ color:var(--accent-dark); font-size:0.9rem; font-weight:600; margin-bottom:14px; }
+  .layout{ display:flex; gap:22px; align-items:flex-start; }
+  @media (max-width:900px){ .layout{ flex-direction:column; } }
+
+  .video-col{ flex:1 1 640px; min-width:0; }
+  .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
+  video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+
+  .center-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.95rem; flex-direction:column; gap:12px; text-align:center; background:rgba(0,0,0,0.4); }
+  .spinner{ width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:#fff; animation:spin 0.8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .controls-bar{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); padding:26px 14px 10px; display:flex; align-items:center; gap:14px; }
+  .ctrl-btn{ background:none; border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:6px; font-size:1.1rem; padding:0; }
+  .ctrl-btn:hover{ background:rgba(255,255,255,0.15); }
+  .live-pill{ display:flex; align-items:center; gap:6px; background:var(--red); color:#fff; font-weight:700; font-size:0.72rem; padding:4px 10px; border-radius:20px; letter-spacing:0.04em; }
+  .live-pill .dot{ width:6px;height:6px;border-radius:50%; background:#fff; animation:pulse 1.3s infinite; }
+  @keyframes pulse{ 0%{opacity:1;} 50%{opacity:0.3;} 100%{opacity:1;} }
+  .elapsed{ color:#e5e2d6; font-size:0.8rem; font-variant-numeric:tabular-nums; }
+  .spacer{ flex:1; }
+
+  .below-video{ margin-top:14px; background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px 18px; font-size:0.85rem; color:var(--muted); }
+
+  .notstarted{ position:absolute; inset:0; background:#0e1614; color:var(--bg); display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; z-index:5; }
+  .notstarted.show{ display:flex; }
+  .notstarted-icon{ font-size:2.6rem; margin-bottom:14px; }
+  .notstarted-title{ font-size:1.3rem; font-weight:800; margin:0 0 8px; }
+  .notstarted-sub{ font-size:0.85rem; color:#b8c4bf; max-width:360px; margin:0 0 20px; line-height:1.55; }
+  .notstarted button{ width:auto; padding:10px 22px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
+
+  .side-col{ flex:0 0 340px; }
+  @media (max-width:900px){ .side-col{ flex:1 1 auto; width:100%; } }
+  .side-box{ background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px; margin-bottom:14px; }
+  .side-tab{ font-weight:700; font-size:0.9rem; color:var(--accent-dark); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+
+  /* Chat */
+  .chat-list{ height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; padding-right:4px; }
+  .chat-empty{ color:var(--muted); font-size:0.82rem; text-align:center; padding:30px 10px; }
+  .chat-msg{ background:var(--accent-soft); border-radius:8px; padding:8px 11px; font-size:0.83rem; line-height:1.4; }
+  .chat-msg.admin{ background:var(--yellow); border:1px solid var(--yellow-line); }
+  .chat-name{ font-weight:700; color:var(--accent-dark); margin-right:6px; }
+  .chat-input-row{ display:flex; gap:8px; }
+  .chat-input-row input{ flex:1; padding:11px 12px; border:1.5px solid #d7d0bd; border-radius:8px; font-size:0.85rem; background:#fbfaf6; }
+  .chat-input-row button{ width:auto; padding:0 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
+
+  /* Poll */
+  .poll-box{ display:none; }
+  .poll-box.show{ display:block; }
+  .poll-question{ font-weight:700; margin-bottom:10px; font-size:0.92rem; }
+  .poll-opt-btn{ width:100%; text-align:left; padding:11px 13px; margin-bottom:8px; border-radius:8px; border:1.5px solid #d7d0bd; background:#fbfaf6; color:var(--ink); font-size:0.85rem; cursor:pointer; }
+  .poll-opt-btn:hover{ border-color:var(--accent); background:var(--accent-soft); }
+  .poll-status{ font-size:0.82rem; color:var(--accent-dark); font-weight:600; margin-top:6px; }
+  .poll-bar-row{ margin-bottom:10px; }
+  .poll-bar-label{ font-size:0.8rem; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .poll-bar-track{ background:var(--accent-soft); border-radius:6px; height:10px; overflow:hidden; }
+  .poll-bar-fill{ background:var(--accent); height:100%; border-radius:6px; }
+
+  /* Name modal */
+  .name-modal{ position:fixed; inset:0; background:#0e1614; z-index:999; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .name-card{ background:var(--panel); border-radius:16px; padding:32px; width:100%; max-width:400px; text-align:center; }
+  .name-card .badge{ font-size:2rem; margin-bottom:10px; }
+  .name-title{ font-size:1.15rem; font-weight:700; margin-bottom:6px; }
+  .name-sub{ font-size:0.85rem; color:var(--muted); margin-bottom:20px; }
+  .name-card label{ display:block; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:600; margin-bottom:6px; }
+  .name-card input{ width:100%; padding:13px 14px; font-size:1rem; border:1.5px solid #d7d0bd; border-radius:10px; background:#fbfaf6; margin-bottom:16px; }
+  .name-card button{ width:100%; padding:14px; font-size:0.95rem; font-weight:700; border:none; border-radius:10px; background:var(--accent); color:#fff; box-shadow:0 3px 0 var(--accent-dark); cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div class="name-modal" id="nameModal">
+  <div class="name-card">
+    <div class="badge">🎓</div>
+    <div class="name-title">Before Joining the Class</div>
+    <p class="name-sub">Enter your name so the teacher and other students can recognize you</p>
+    <label>Your Name</label>
+    <input type="text" id="studentNameInput" placeholder="e.g. Rahul Kumar">
+    <button id="nameSubmitBtn">Join Class</button>
+  </div>
+</div>
+
+<div class="topbar">
+  <span class="logo-text">Science</span>
+  <span class="logo-badge">World</span>
+</div>
+
+<div class="page">
+  <div class="back-link">← Back</div>
+  <div class="layout">
+
+    <div class="video-col">
+      <div class="player" id="player">
+        <video id="remoteVideo" autoplay playsinline muted></video>
+        <div class="center-icon" id="loaderIcon">
+          <div class="spinner"></div>
+          <span>Connecting to class...</span>
+        </div>
+        <div class="notstarted" id="notStartedOverlay">
+          <div class="notstarted-icon">🕒</div>
+          <div class="notstarted-title">Class Hasn't Started Yet</div>
+          <p class="notstarted-sub">Please wait for the teacher to start the class. It will connect automatically as soon as the teacher goes live.</p>
+          <button id="retryBtn">Try Again</button>
+        </div>
+        <div class="controls-bar" id="controlsBar" style="display:none;">
+          <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause">⏸</button>
+          <button class="ctrl-btn" id="volBtn" title="Mute/Unmute">🔇</button>
+          <div class="live-pill"><span class="dot"></span> LIVE</div>
+          <span class="elapsed" id="elapsedTime">00:00</span>
+          <div class="spacer"></div>
+          <button class="ctrl-btn" id="fsBtn" title="Fullscreen">⛶</button>
+        </div>
+      </div>
+      <div class="below-video" id="statusLine">Welcome to the Science World live class.</div>
+    </div>
+
+    <div class="side-col">
+      <div class="side-box poll-box" id="pollBox">
+        <div class="side-tab">📊 Poll</div>
+        <div class="poll-question" id="pollQuestionEl"></div>
+        <div id="pollOptionsEl"></div>
+        <div id="pollResultsArea"></div>
+        <div class="poll-status" id="pollStatusEl"></div>
+      </div>
+
+      <div class="side-box">
+        <div class="side-tab">💬 Chat</div>
+        <div class="chat-list" id="chatList">
+          <div class="chat-empty" id="chatEmpty">No messages yet — you can chat here during the class.</div>
+        </div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Type a message...">
+          <button id="chatSendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const ROOM_ID = "myclass01";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCw4k_h4QHEDOK77DFzRod96rG0MNAKBqE",
+  authDomain: "liveee-9dce9.firebaseapp.com",
+  projectId: "liveee-9dce9",
+  storageBucket: "liveee-9dce9.firebasestorage.app",
+  messagingSenderId: "652809982147",
+  appId: "1:652809982147:web:239082a8816d3334179276",
+  measurementId: "G-M9HG78N0B8"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function roomRef(){ return db.collection('rooms').doc(ROOM_ID); }
+function messagesRef(){ return roomRef().collection('messages'); }
+function pollDocRef(){ return roomRef().collection('poll').doc('active'); }
+
+let clientId = sessionStorage.getItem('sw_client_id');
+if (!clientId) { clientId = 'stu_' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('sw_client_id', clientId); }
+let studentName = '';
+
+const nameModal = document.getElementById('nameModal');
+const studentNameInput = document.getElementById('studentNameInput');
+const nameSubmitBtn = document.getElementById('nameSubmitBtn');
+
+const savedName = sessionStorage.getItem('sw_student_name');
+if (savedName) studentNameInput.value = savedName;
+
+function submitName() {
+  const val = studentNameInput.value.trim();
+  if (!val) { studentNameInput.focus(); return; }
+  studentName = val;
+  sessionStorage.setItem('sw_student_name', val);
+  nameModal.style.display = 'none';
+  attemptJoin();
+  listenChat();
+  listenPoll();
+}
+nameSubmitBtn.addEventListener('click', submitName);
+studentNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitName(); });
+
+/* ===== WebRTC ===== */
+let peer = null;
+let startTime = null;
+let elapsedInterval = null;
+
+const remoteVideo = document.getElementById('remoteVideo');
+const loaderIcon = document.getElementById('loaderIcon');
+const notStartedOverlay = document.getElementById('notStartedOverlay');
+const retryBtn = document.getElementById('retryBtn');
+const controlsBar = document.getElementById('controlsBar');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const volBtn = document.getElementById('volBtn');
+const fsBtn = document.getElementById('fsBtn');
+const elapsedTime = document.getElementById('elapsedTime');
+const statusLine = document.getElementById('statusLine');
+const player = document.getElementById('player');
+
+const iceConfig = {
+  iceServers: [
+    { urls: "stun:stun.relay.metered.ca:80" },
+    { urls: "turn:global.relay.metered.ca:80", username: "398918334c99a4f629ac9e60", credential: "d6o4Pj8ZG6RlTytA" },
+    { urls: "turn:global.relay.metered.ca:443", username: "398918334c99a4f629ac9e60", credential: "d6o4Pj8ZG6RlTytA" }
+  ]
+};
+
+function createDummyStream() {
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioCtx.createOscillator();
+  const audioDst = audioCtx.createMediaStreamDestination();
+  oscillator.connect(audioDst);
+  oscillator.start();
+  const audioTrack = audioDst.stream.getAudioTracks()[0];
+  const canvas = document.createElement('canvas');
+  canvas.width = 2; canvas.height = 2;
+  canvas.getContext('2d').fillRect(0, 0, 2, 2);
+  const videoTrack = canvas.captureStream(1).getVideoTracks()[0];
+  return new MediaStream([audioTrack, videoTrack]);
+}
+
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+function startElapsedTimer(){ startTime = Date.now(); elapsedInterval = setInterval(() => { const secs = Math.floor((Date.now() - startTime)/1000); elapsedTime.textContent = pad(Math.floor(secs/60)) + ':' + pad(secs%60); }, 1000); }
+function stopElapsedTimer(){ if (elapsedInterval) clearInterval(elapsedInterval); }
+
+function showNotStarted(){ loaderIcon.style.display='none'; controlsBar.style.display='none'; notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
+function hideNotStarted(){ notStartedOverlay.classList.remove('show'); }
+
+function attemptJoin() {
+  hideNotStarted();
+  loaderIcon.style.display = 'flex';
+  controlsBar.style.display = 'none';
+
+  peer = new Peer(undefined, { debug: 1, config: iceConfig });
+
+  peer.on('open', () => {
+    const dummyStream = createDummyStream();
+    const call = peer.call(ROOM_ID, dummyStream);
+    if (!call) { showNotStarted(); return; }
+
+    call.on('stream', (remoteStream) => {
+      loaderIcon.style.display = 'none';
+      remoteVideo.srcObject = remoteStream;
+      remoteVideo.play().catch(() => {});
+      controlsBar.style.display = 'flex';
+      statusLine.textContent = 'You are connected to the live class.';
+      startElapsedTimer();
+    });
+    call.on('close', () => { stopElapsedTimer(); showNotStarted(); });
+    call.on('error', () => { showNotStarted(); });
+  });
+
+  peer.on('error', (err) => {
+    if (err.type === 'peer-unavailable') showNotStarted();
+    else { loaderIcon.style.display = 'none'; statusLine.textContent = 'Could not connect: ' + err.type; }
+  });
+}
+
+retryBtn.addEventListener('click', () => { if (peer) peer.destroy(); attemptJoin(); });
+
+playPauseBtn.addEventListener('click', () => {
+  if (remoteVideo.paused) { remoteVideo.play(); playPauseBtn.textContent = '⏸'; }
+  else { remoteVideo.pause(); playPauseBtn.textContent = '▶'; }
+});
+volBtn.addEventListener('click', () => {
+  remoteVideo.muted = !remoteVideo.muted;
+  if (!remoteVideo.muted) remoteVideo.play().catch(() => {});
+  volBtn.textContent = remoteVideo.muted ? '🔇' : '🔊';
+});
+fsBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) player.requestFullscreen().catch(() => {});
+  else document.exitFullscreen();
+});
+
+/* ===== Chat ===== */
+const chatList = document.getElementById('chatList');
+const chatEmpty = document.getElementById('chatEmpty');
+const chatInput = document.getElementById('chatInput');
+const chatSendBtn = document.getElementById('chatSendBtn');
+
+function listenChat() {
+  messagesRef().orderBy('ts', 'asc').limitToLast(150).onSnapshot(snap => {
+    chatList.innerHTML = '';
+    if (snap.empty) { chatList.appendChild(chatEmpty); return; }
+    snap.forEach(doc => {
+      const m = doc.data();
+      const div = document.createElement('div');
+      div.className = 'chat-msg' + (m.isAdmin ? ' admin' : '');
+      div.innerHTML = '<span class="chat-name">' + escapeHtml(m.name || 'Student') + '</span>' + escapeHtml(m.text || '');
+      chatList.appendChild(div);
+    });
+    chatList.scrollTop = chatList.scrollHeight;
+  });
+}
+
+function sendStudentMsg() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  messagesRef().add({ name: studentName, text, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
+  chatInput.value = '';
+}
+chatSendBtn.addEventListener('click', sendStudentMsg);
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendStudentMsg(); });
+
+/* ===== Poll ===== */
+const pollBox = document.getElementById('pollBox');
+const pollQuestionEl = document.getElementById('pollQuestionEl');
+const pollOptionsEl = document.getElementById('pollOptionsEl');
+const pollResultsArea = document.getElementById('pollResultsArea');
+const pollStatusEl = document.getElementById('pollStatusEl');
+
+function renderResultsBars(data) {
+  const votes = data.votes || {};
+  const counts = new Array(data.options.length).fill(0);
+  Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+  const total = counts.reduce((a, b) => a + b, 0) || 1;
+  pollResultsArea.innerHTML = data.options.map((opt, i) => {
+    const pct = Math.round((counts[i] / total) * 100);
+    return '<div class="poll-bar-row"><div class="poll-bar-label"><span>' + escapeHtml(opt) + '</span><span>' + counts[i] + '</span></div><div class="poll-bar-track"><div class="poll-bar-fill" style="width:' + pct + '%"></div></div></div>';
+  }).join('');
+}
+
+function listenPoll() {
+  pollDocRef().onSnapshot(doc => {
+    if (!doc.exists) { pollBox.classList.remove('show'); return; }
+    const data = doc.data();
+    pollBox.classList.add('show');
+    pollQuestionEl.textContent = data.question;
+    const voted = data.votes && data.votes[clientId] !== undefined;
+
+    if (data.status === 'closed') {
+      pollOptionsEl.innerHTML = '';
+      renderResultsBars(data);
+      pollStatusEl.textContent = 'This poll is closed — results are above.';
+    } else if (voted) {
+      pollOptionsEl.innerHTML = '';
+      pollResultsArea.innerHTML = '';
+      pollStatusEl.textContent = 'Your vote has been recorded ✓ — waiting for results.';
+    } else {
+      pollResultsArea.innerHTML = '';
+      pollStatusEl.textContent = '';
+      pollOptionsEl.innerHTML = data.options.map((opt, i) =>
+        '<button class="poll-opt-btn" data-i="' + i + '">' + escapeHtml(opt) + '</button>'
+      ).join('');
+      pollOptionsEl.querySelectorAll('.poll-opt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.i);
+          pollDocRef().update({ ['votes.' + clientId]: idx });
+        });
+      });
+    }
+  });
+}
+</script>
+</body>
+</html>
