@@ -33,11 +33,12 @@
     .layout{ flex-direction:column; gap:0; align-items:stretch; }
     .page{ padding:0 0 40px; }
     .back-link{ padding:12px 16px 8px; margin-bottom:0; }
-    .video-col{ position:sticky; top:0; z-index:15; background:#000; width:100%; }
-    .player{ border-radius:0; aspect-ratio:auto; height:48vh; max-height:420px; min-height:200px; box-shadow:none; width:100%; }
+    .video-col{ position:sticky; top:0; z-index:15; background:var(--bg); width:100%; padding:0 14px 14px; }
+    .player{ border-radius:16px; aspect-ratio:1/1; height:auto; max-height:none; min-height:0; width:100%; max-width:460px; margin:0 auto; box-shadow:0 10px 26px -14px rgba(0,0,0,0.45); }
+    .player video{ object-fit:cover; }
     .below-video{ display:none; }
     .side-col{ padding:0 12px; margin-top:0; }
-    .combo-box{ border-radius:12px 12px 0 0; margin-bottom:0; border-top:none; }
+    .combo-box{ border-radius:12px; margin-bottom:0; }
   }
   .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
   .player:fullscreen, .player:-webkit-full-screen{ aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
@@ -127,7 +128,6 @@
     .replay-nav{ bottom:40px; gap:6px; }
     .replay-nav .s-btn{ padding:5px 9px; font-size:0.7rem; }
     .replay-nav-label{ font-size:0.68rem; padding:4px 8px; }
-    .player{ height:42vh; }
   }
 
   /* Poll (nested inside the combined poll+chat block) */
