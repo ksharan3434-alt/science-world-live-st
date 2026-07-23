@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=1300">
 <title>Science World — Live Class</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -15,7 +15,6 @@
     --red:#e0332b; --red-dark:#a41f19; --yellow:#fff3b0; --yellow-line:#e8c93a;
   }
   *{box-sizing:border-box;}
-  html, body{ overflow-x:hidden; max-width:100%; }
   body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
 
   .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
@@ -26,22 +25,10 @@
   .page{ max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
   .back-link{ color:var(--accent-dark); font-size:0.9rem; font-weight:600; margin-bottom:14px; }
   .layout{ display:flex; gap:22px; align-items:flex-start; }
-  @media (max-width:900px){ .layout{ flex-direction:column; } }
 
   .video-col{ flex:1 1 640px; min-width:0; }
-  @media (max-width:900px){
-    .layout{ flex-direction:column; gap:0; align-items:stretch; }
-    .page{ padding:0 0 40px; }
-    .back-link{ padding:12px 16px 8px; margin-bottom:0; }
-    .video-col{ position:sticky; top:0; z-index:15; background:var(--bg); width:100%; padding:0 8px 6px; }
-    .player{ border-radius:16px; aspect-ratio:1/1; height:auto; max-height:none; min-height:0; width:100%; max-width:540px; margin:0 auto; box-shadow:0 10px 26px -14px rgba(0,0,0,0.45); }
-    .player video{ object-fit:cover; }
-    .below-video{ display:none; }
-    .side-col{ padding:0 12px; margin-top:0; }
-    .combo-box{ border-radius:12px; margin-bottom:0; }
-  }
   .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
-  .player:fullscreen, .player:-webkit-full-screen{ aspect-ratio:auto; width:100vw; height:100vh; max-width:none; margin:0; border-radius:0; }
+  .player:fullscreen, .player:-webkit-full-screen{ aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
   .player:fullscreen video, .player:-webkit-full-screen video{ object-fit:contain; }
   video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
 
@@ -68,7 +55,6 @@
   .notstarted button{ width:auto; padding:10px 22px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
 
   .side-col{ flex:0 0 340px; }
-  @media (max-width:900px){ .side-col{ flex:1 1 auto; width:100%; } }
   .side-box{ background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px; margin-bottom:14px; }
   .side-tab{ font-weight:700; font-size:0.9rem; color:var(--accent-dark); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
 
@@ -111,24 +97,6 @@
   .quality-menu.show{ display:block; }
   .quality-opt{ padding:9px 12px; font-size:0.8rem; color:#e5e2d6; border-radius:6px; cursor:pointer; white-space:nowrap; }
   .quality-opt:hover, .quality-opt.active{ background:var(--accent); color:#fff; }
-
-  /* Mobile tweaks — most students are on phones */
-  @media (max-width:480px){
-    .topbar{ padding:10px 16px; }
-    .logo-img{ height:26px; }
-    .controls-bar{ gap:6px; padding:20px 6px 8px; }
-    .ctrl-btn{ width:30px; height:30px; font-size:0.95rem; }
-    .vol-slider{ width:38px; }
-    .elapsed{ display:none; }
-    .live-pill{ font-size:0.64rem; padding:3px 7px; }
-    .quality-menu{ min-width:150px; }
-    .branding-watermark{ font-size:0.6rem; padding:3px 7px; top:8px; left:8px; }
-    .side-box{ padding:13px; }
-    .name-card{ padding:24px; }
-    .replay-nav{ bottom:40px; gap:6px; }
-    .replay-nav .s-btn{ padding:5px 9px; font-size:0.7rem; }
-    .replay-nav-label{ font-size:0.68rem; padding:4px 8px; }
-  }
 
   /* Poll (nested inside the combined poll+chat block) */
   .combo-box{ display:flex; flex-direction:column; }
