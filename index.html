@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1300">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Science World — Live Class</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -15,7 +15,11 @@
     --red:#e0332b; --red-dark:#a41f19; --yellow:#fff3b0; --yellow-line:#e8c93a;
   }
   *{box-sizing:border-box;}
-  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; position:relative; overflow-x:hidden; }
+
+  /* Forces every device to render the exact same desktop layout, then scales
+     the whole thing down/up with JS so it fills the real screen width. */
+  #dtScaleWrap{ width:1300px; position:absolute; top:0; left:0; transform-origin:0 0; }
 
   .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
   .logo-img{ height:32px; display:block; }
@@ -135,6 +139,8 @@
   </div>
 </div>
 
+<div id="dtScaleWrap">
+
 <div class="topbar">
   <img src="logo.png" alt="Science World" class="logo-img" id="logoImg" onerror="this.style.display='none';">
   <span class="logo-text">Science</span>
@@ -220,6 +226,8 @@
     </div>
 
   </div>
+</div>
+
 </div>
 
 <script>
@@ -693,6 +701,35 @@ remoteVideo.addEventListener('ended', () => {
 
 /* ===== Start everything now that all elements/functions are ready ===== */
 if (studentName) startEverything();
+</script>
+
+<script>
+/* ===== Force-desktop scaling =====
+   The whole page is built at a fixed 1300px desktop width (#dtScaleWrap).
+   This scales that wrapper down (or up) with a CSS transform so it always
+   fills the real screen exactly, on every device — same layout as PC,
+   just proportionally resized. Re-runs on resize/rotate and whenever the
+   content's own height changes (chat messages, poll showing/hiding, etc). */
+(function () {
+  var DESIGN_WIDTH = 1300;
+  var wrap = document.getElementById('dtScaleWrap');
+
+  function applyScale() {
+    var scale = window.innerWidth / DESIGN_WIDTH;
+    wrap.style.transform = 'scale(' + scale + ')';
+    document.body.style.height = (wrap.offsetHeight * scale) + 'px';
+  }
+
+  applyScale();
+  window.addEventListener('resize', applyScale);
+  window.addEventListener('orientationchange', function () { setTimeout(applyScale, 250); });
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(applyScale).observe(wrap);
+  } else {
+    setInterval(applyScale, 1000);
+  }
+})();
 </script>
 </body>
 </html>
