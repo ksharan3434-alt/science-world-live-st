@@ -3,158 +3,211 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Science World — Live Class</title>
+<title>Science World — Teacher Panel</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
-    --ink:#20302c; --bg:#f3efe4; --panel:#ffffff;
+    --ink:#20302c; --paper:#f3efe4; --panel:#ffffff; --line:#20302c;
     --accent:#2f6f5e; --accent-dark:#204d41; --accent-soft:#e2ede7;
     --danger:#a4402f; --danger-soft:#f6e5e0; --muted:#6b7a75;
     --red:#e0332b; --red-dark:#a41f19; --yellow:#fff3b0; --yellow-line:#e8c93a;
   }
   *{box-sizing:border-box;}
-  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
-
-  .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
+  body{
+    margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif;
+    background:radial-gradient(circle at 15% 10%, #e9e3d2 0%, transparent 45%), var(--paper);
+    color:var(--ink); min-height:100vh;
+  }
+  .topbar{ background:#0e1614; padding:12px 24px; display:flex; align-items:center; gap:10px; }
+  .logo-img{ height:34px; width:auto; border-radius:6px; display:block; }
   .logo-text{ color:#fff; font-weight:700; font-size:1.15rem; }
   .logo-badge{ background:var(--red); color:#fff; font-weight:800; font-size:0.82rem; padding:4px 9px; border-radius:5px; box-shadow:0 2px 0 var(--red-dark); }
-
-  .page{ max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
-  .back-link{ color:var(--accent-dark); font-size:0.9rem; font-weight:600; margin-bottom:14px; }
+  .page{ max-width:1200px; margin:0 auto; padding:24px 20px 60px; }
   .layout{ display:flex; gap:22px; align-items:flex-start; }
   @media (max-width:900px){ .layout{ flex-direction:column; } }
+  .left-col{ flex:1 1 500px; min-width:0; }
+  .right-col{ flex:0 0 340px; }
+  @media (max-width:900px){ .right-col{ flex:1 1 auto; width:100%; } }
 
-  .video-col{ flex:1 1 640px; min-width:0; }
-  .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
-  video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+  .card{ background:var(--panel); border:1.5px solid #ded6c2; border-radius:16px; padding:26px; box-shadow:0 1px 0 #fff inset,0 10px 30px -18px rgba(32,48,44,0.35); margin-bottom:18px; }
+  label{ display:block; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:600; margin-bottom:6px; }
+  input[type=text]{ width:100%; padding:12px 13px; font-size:0.92rem; border:1.5px solid #d7d0bd; border-radius:10px; background:#fbfaf6; color:var(--ink); margin-bottom:14px; }
+  input[type=text]:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  select{ width:100%; padding:12px 13px; font-size:0.92rem; border:1.5px solid #d7d0bd; border-radius:10px; background:#fbfaf6; color:var(--ink); margin-bottom:6px; }
+  select:disabled{ opacity:0.6; }
+  .hint{ font-size:0.78rem; color:var(--muted); margin:-8px 0 16px; }
 
-  .center-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.95rem; flex-direction:column; gap:12px; text-align:center; background:rgba(0,0,0,0.4); }
-  .spinner{ width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:#fff; animation:spin 0.8s linear infinite; }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
+  button{ width:100%; padding:13px; font-size:0.9rem; font-weight:600; border:none; border-radius:10px; cursor:pointer; }
+  .btn-primary{ background:var(--accent); color:#fff; box-shadow:0 3px 0 var(--accent-dark); }
+  .btn-primary:hover{ transform:translateY(1px); box-shadow:0 2px 0 var(--accent-dark); }
+  .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; transform:none; }
+  .btn-danger{ background:var(--danger); color:#fff; box-shadow:0 3px 0 #7a2f22; margin-top:10px; }
+  .btn-dark{ background:var(--ink); color:#fff; box-shadow:0 3px 0 #0e1614; }
 
-  .controls-bar{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); padding:26px 14px 10px; display:flex; align-items:center; gap:14px; }
-  .ctrl-btn{ background:none; border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:6px; font-size:1.1rem; padding:0; }
-  .ctrl-btn:hover{ background:rgba(255,255,255,0.15); }
-  .live-pill{ display:flex; align-items:center; gap:6px; background:var(--red); color:#fff; font-weight:700; font-size:0.72rem; padding:4px 10px; border-radius:20px; letter-spacing:0.04em; }
-  .live-pill .dot{ width:6px;height:6px;border-radius:50%; background:#fff; animation:pulse 1.3s infinite; }
-  @keyframes pulse{ 0%{opacity:1;} 50%{opacity:0.3;} 100%{opacity:1;} }
-  .elapsed{ color:#e5e2d6; font-size:0.8rem; font-variant-numeric:tabular-nums; }
-  .spacer{ flex:1; }
+  .status{ font-size:0.84rem; margin-top:14px; padding:11px 13px; border-radius:10px; background:var(--accent-soft); border-left:3px solid var(--accent); display:none; line-height:1.5; }
+  .status.show{ display:block; }
+  .status.err{ background:var(--danger-soft); border-left-color:var(--danger); }
 
-  .below-video{ margin-top:14px; background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px 18px; font-size:0.85rem; color:var(--muted); }
+  .link-box{ display:none; margin-top:14px; background:var(--accent-soft); border:1px dashed var(--accent); border-radius:10px; padding:13px; }
+  .link-box.show{ display:block; }
+  .link-row{ display:flex; gap:8px; }
+  .link-row input{ flex:1; margin-bottom:0; font-size:0.8rem; background:#fff; color:var(--accent-dark); font-weight:600; }
+  .copy-btn{ width:auto; padding:0 16px; background:var(--accent-dark); color:#fff; font-size:0.82rem; }
 
-  .notstarted{ position:absolute; inset:0; background:#0e1614; color:var(--bg); display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; z-index:5; }
-  .notstarted.show{ display:flex; }
-  .notstarted-icon{ font-size:2.6rem; margin-bottom:14px; }
-  .notstarted-title{ font-size:1.3rem; font-weight:800; margin:0 0 8px; }
-  .notstarted-sub{ font-size:0.85rem; color:#b8c4bf; max-width:360px; margin:0 0 20px; line-height:1.55; }
-  .notstarted button{ width:auto; padding:10px 22px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
+  .stat-row{ display:flex; align-items:center; gap:14px; margin-top:14px; }
+  .stat-box{ background:var(--accent-soft); border-radius:10px; padding:9px 15px; display:flex; flex-direction:column; align-items:center; }
+  .count{ font-size:1.5rem; font-weight:700; color:var(--accent-dark); line-height:1; }
+  .count-label{ font-size:0.66rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-top:3px; }
+  .live-tag{ display:none; align-items:center; gap:6px; font-size:0.75rem; font-weight:700; color:var(--danger); letter-spacing:0.05em; text-transform:uppercase; }
+  .live-tag.show{ display:flex; }
+  .dot{ width:8px;height:8px;border-radius:50%; background:var(--danger); animation:pulse 1.4s infinite; }
+  @keyframes pulse{ 0%{opacity:1;} 50%{opacity:0.25;} 100%{opacity:1;} }
 
-  .side-col{ flex:0 0 340px; }
-  @media (max-width:900px){ .side-col{ flex:1 1 auto; width:100%; } }
-  .side-box{ background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px; margin-bottom:14px; }
+  video{ width:100%; margin-top:16px; border-radius:12px; background:#111; border:1.5px solid var(--line); display:none; }
+  .media-controls{ display:flex; gap:10px; margin-top:12px; }
+  .toggle-btn{ flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:11px; border-radius:10px; font-size:0.83rem; font-weight:600; background:var(--accent-soft); color:var(--accent-dark); }
+  .toggle-btn.off{ background:var(--danger-soft); color:var(--danger); }
+
   .side-tab{ font-weight:700; font-size:0.9rem; color:var(--accent-dark); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
 
   /* Chat */
-  .chat-list{ height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; padding-right:4px; }
-  .chat-empty{ color:var(--muted); font-size:0.82rem; text-align:center; padding:30px 10px; }
+  .chat-list{ height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; padding-right:4px; }
   .chat-msg{ background:var(--accent-soft); border-radius:8px; padding:8px 11px; font-size:0.83rem; line-height:1.4; }
   .chat-msg.admin{ background:var(--yellow); border:1px solid var(--yellow-line); }
   .chat-name{ font-weight:700; color:var(--accent-dark); margin-right:6px; }
   .chat-input-row{ display:flex; gap:8px; }
-  .chat-input-row input{ flex:1; padding:11px 12px; border:1.5px solid #d7d0bd; border-radius:8px; font-size:0.85rem; background:#fbfaf6; }
-  .chat-input-row button{ width:auto; padding:0 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
+  .chat-input-row input{ flex:1; margin-bottom:0; }
+  .chat-input-row button{ width:auto; padding:0 16px; background:var(--accent); color:#fff; }
 
   /* Poll */
-  .poll-box{ display:none; }
-  .poll-box.show{ display:block; }
-  .poll-question{ font-weight:700; margin-bottom:10px; font-size:0.92rem; }
-  .poll-opt-btn{ width:100%; text-align:left; padding:11px 13px; margin-bottom:8px; border-radius:8px; border:1.5px solid #d7d0bd; background:#fbfaf6; color:var(--ink); font-size:0.85rem; cursor:pointer; }
-  .poll-opt-btn:hover{ border-color:var(--accent); background:var(--accent-soft); }
-  .poll-status{ font-size:0.82rem; color:var(--accent-dark); font-weight:600; margin-top:6px; }
+  .poll-opt-row{ display:flex; gap:8px; margin-bottom:8px; }
+  .poll-opt-row input{ margin-bottom:0; }
+  .remove-opt-btn{ width:auto; flex:0 0 auto; padding:0 13px; background:var(--danger-soft); color:var(--danger); border-radius:8px; font-weight:700; font-size:0.9rem; }
+  .remove-opt-btn:disabled{ opacity:0.35; cursor:not-allowed; }
   .poll-bar-row{ margin-bottom:10px; }
   .poll-bar-label{ font-size:0.8rem; margin-bottom:4px; display:flex; justify-content:space-between; }
   .poll-bar-track{ background:var(--accent-soft); border-radius:6px; height:10px; overflow:hidden; }
   .poll-bar-fill{ background:var(--accent); height:100%; border-radius:6px; }
+  .poll-timer{ font-size:0.78rem; color:var(--muted); margin:8px 0 10px; }
 
-  /* Name modal */
-  .name-modal{ position:fixed; inset:0; background:#0e1614; z-index:999; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .name-card{ background:var(--panel); border-radius:16px; padding:32px; width:100%; max-width:400px; text-align:center; }
-  .name-card .badge{ font-size:2rem; margin-bottom:10px; }
-  .name-title{ font-size:1.15rem; font-weight:700; margin-bottom:6px; }
-  .name-sub{ font-size:0.85rem; color:var(--muted); margin-bottom:20px; }
-  .name-card label{ display:block; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:600; margin-bottom:6px; }
-  .name-card input{ width:100%; padding:13px 14px; font-size:1rem; border:1.5px solid #d7d0bd; border-radius:10px; background:#fbfaf6; margin-bottom:16px; }
-  .name-card button{ width:100%; padding:14px; font-size:0.95rem; font-weight:700; border:none; border-radius:10px; background:var(--accent); color:#fff; box-shadow:0 3px 0 var(--accent-dark); cursor:pointer; }
+  /* Char counter */
+  .char-counter{ font-size:0.72rem; color:var(--muted); text-align:right; margin-top:-6px; margin-bottom:10px; }
+  .char-counter.limit{ color:var(--danger); font-weight:700; }
+
+  /* Students / block panel */
+  .students-list{ max-height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  .students-empty{ color:var(--muted); font-size:0.82rem; text-align:center; padding:18px 0; }
+  .student-row{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; background:var(--accent-soft); border-radius:8px; padding:8px 10px; font-size:0.82rem; }
+  .student-row.is-chat-blocked{ background:#fff3d6; }
+  .student-row.is-full-blocked{ background:var(--danger-soft); }
+  .s-name{ flex:1 1 auto; min-width:60px; font-weight:600; color:var(--accent-dark); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .s-badge{ font-size:0.64rem; font-weight:700; padding:2px 7px; border-radius:10px; white-space:nowrap; }
+  .s-badge.chat{ background:var(--yellow); color:#7a5d00; }
+  .s-badge.full{ background:var(--danger); color:#fff; }
+  .s-btn{ width:auto; padding:6px 10px; font-size:0.72rem; border-radius:6px; background:var(--panel); border:1px solid #d7d0bd; color:var(--ink); font-weight:600; cursor:pointer; }
+  .s-btn.active{ background:var(--danger); color:#fff; border-color:var(--danger); }
+  .students-note{ font-size:0.76rem; color:var(--muted); margin-top:10px; line-height:1.5; }
+
+  /* Mobile tweaks */
+  @media (max-width:480px){
+    .page{ padding:16px 12px 40px; }
+    .topbar{ padding:12px 16px; }
+    .card{ padding:18px; }
+    .stat-row{ flex-wrap:wrap; }
+  }
 </style>
 </head>
 <body>
 
-<div class="name-modal" id="nameModal">
-  <div class="name-card">
-    <div class="badge">🎓</div>
-    <div class="name-title">Before Joining the Class</div>
-    <p class="name-sub">Enter your name so the teacher and other students can recognize you</p>
-    <label>Your Name</label>
-    <input type="text" id="studentNameInput" placeholder="e.g. Rahul Kumar">
-    <button id="nameSubmitBtn">Join Class</button>
-  </div>
-</div>
-
 <div class="topbar">
+  <img src="logo.png" alt="Logo" class="logo-img" onerror="this.style.display='none'">
   <span class="logo-text">Science</span>
   <span class="logo-badge">World</span>
 </div>
 
 <div class="page">
-  <div class="back-link">← Back</div>
   <div class="layout">
 
-    <div class="video-col">
-      <div class="player" id="player">
-        <video id="remoteVideo" autoplay playsinline muted></video>
-        <div class="center-icon" id="loaderIcon">
-          <div class="spinner"></div>
-          <span>Connecting to class...</span>
+    <div class="left-col">
+      <div class="card">
+        <div class="side-tab">📡 Broadcast</div>
+        <div id="setupBlock">
+          <p class="hint" style="margin-top:0;">Room ID is already set — click below to start</p>
+          <label>Broadcast Quality</label>
+          <select id="qualitySelect">
+            <option value="480">480p (Data Saver)</option>
+            <option value="720" selected>720p (Recommended)</option>
+            <option value="1080">1080p (HD — needs strong internet)</option>
+          </select>
+          <p class="hint" style="margin-top:-10px;">You can change this anytime, even while you're live.</p>
+          <button class="btn-primary" id="startBtn">Start Camera</button>
         </div>
-        <div class="notstarted" id="notStartedOverlay">
-          <div class="notstarted-icon">🕒</div>
-          <div class="notstarted-title">Class Hasn't Started Yet</div>
-          <p class="notstarted-sub">Please wait for the teacher to start the class. It will connect automatically as soon as the teacher goes live.</p>
-          <button id="retryBtn">Try Again</button>
+
+        <div id="statusBox" class="status"></div>
+
+        <div id="linkBox" class="link-box">
+          <label>Send this link to students</label>
+          <div class="link-row">
+            <input type="text" id="shareLink" readonly>
+            <button class="copy-btn" id="copyBtn">Copy</button>
+          </div>
         </div>
-        <div class="controls-bar" id="controlsBar" style="display:none;">
-          <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause">⏸</button>
-          <button class="ctrl-btn" id="volBtn" title="Mute/Unmute">🔇</button>
-          <div class="live-pill"><span class="dot"></span> LIVE</div>
-          <span class="elapsed" id="elapsedTime">00:00</span>
-          <div class="spacer"></div>
-          <button class="ctrl-btn" id="fsBtn" title="Fullscreen">⛶</button>
+
+        <div class="stat-row" id="statRow" style="display:none;">
+          <div class="stat-box"><div class="count" id="studentCount">0</div><div class="count-label">Connected</div></div>
+          <div class="live-tag" id="liveTag"><span class="dot"></span> LIVE</div>
         </div>
+
+        <video id="localVideo" autoplay muted playsinline></video>
+
+        <div class="media-controls" id="mediaControls" style="display:none;">
+          <button class="toggle-btn" id="micBtn">🎤 Mic ON</button>
+          <button class="toggle-btn" id="camBtn">📷 Camera ON</button>
+        </div>
+
+        <button class="btn-danger" id="stopBtn" style="display:none;">Stop Broadcast</button>
       </div>
-      <div class="below-video" id="statusLine">Welcome to the Science World live class.</div>
     </div>
 
-    <div class="side-col">
-      <div class="side-box poll-box" id="pollBox">
+    <div class="right-col">
+      <div class="card">
         <div class="side-tab">📊 Poll</div>
-        <div class="poll-question" id="pollQuestionEl"></div>
-        <div id="pollOptionsEl"></div>
-        <div id="pollResultsArea"></div>
-        <div class="poll-status" id="pollStatusEl"></div>
+        <div id="pollFormArea">
+          <label>Question</label>
+          <input type="text" id="pollQuestion" placeholder="e.g. Who discovered Mitochondria?">
+          <label>Options</label>
+          <div id="pollOptionsList"></div>
+          <button type="button" class="btn-dark" id="addOptionBtn" style="margin-bottom:14px;">+ Add Option</button>
+          <label>Duration (in minutes)</label>
+          <input type="text" id="pollDuration" placeholder="e.g. 2">
+          <button class="btn-primary" id="startPollBtn">Start Poll</button>
+        </div>
+        <div id="pollLiveArea" style="display:none;">
+          <div id="pollLiveQuestion" style="font-weight:700; margin-bottom:10px;"></div>
+          <div id="pollResults"></div>
+          <div class="poll-timer" id="pollTimer"></div>
+          <button class="btn-danger" id="closePollBtn">Close Poll</button>
+        </div>
       </div>
 
-      <div class="side-box">
-        <div class="side-tab">💬 Chat</div>
-        <div class="chat-list" id="chatList">
-          <div class="chat-empty" id="chatEmpty">No messages yet — you can chat here during the class.</div>
+      <div class="card">
+        <div class="side-tab">👥 Students</div>
+        <div class="students-list" id="studentsList">
+          <div class="students-empty" id="studentsEmpty">No students connected yet.</div>
         </div>
+        <p class="students-note">"Mute Chat" stops a student from sending messages. "Block" also removes them from the live video. Students on a slow connection can also lower their own quality individually from their video player — that doesn't affect anyone else. This is all browser-based, so a student could get around a block using a different browser or device.</p>
+      </div>
+
+      <div class="card">
+        <div class="side-tab">💬 Chat</div>
+        <div class="chat-list" id="chatList"></div>
         <div class="chat-input-row">
-          <input type="text" id="chatInput" placeholder="Type a message...">
+          <input type="text" id="chatInput" placeholder="Type a message..." maxlength="50">
           <button id="chatSendBtn">Send</button>
         </div>
+        <div class="char-counter" id="charCounter">0/50</div>
       </div>
     </div>
 
@@ -181,46 +234,60 @@ function roomRef(){ return db.collection('rooms').doc(ROOM_ID); }
 function messagesRef(){ return roomRef().collection('messages'); }
 function pollDocRef(){ return roomRef().collection('poll').doc('active'); }
 
-let clientId = sessionStorage.getItem('sw_client_id');
-if (!clientId) { clientId = 'stu_' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('sw_client_id', clientId); }
-let studentName = '';
-
-const nameModal = document.getElementById('nameModal');
-const studentNameInput = document.getElementById('studentNameInput');
-const nameSubmitBtn = document.getElementById('nameSubmitBtn');
-
-const savedName = sessionStorage.getItem('sw_student_name');
-if (savedName) studentNameInput.value = savedName;
-
-function submitName() {
-  const val = studentNameInput.value.trim();
-  if (!val) { studentNameInput.focus(); return; }
-  studentName = val;
-  sessionStorage.setItem('sw_student_name', val);
-  nameModal.style.display = 'none';
-  attemptJoin();
-  listenChat();
-  listenPoll();
-}
-nameSubmitBtn.addEventListener('click', submitName);
-studentNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitName(); });
-
-/* ===== WebRTC ===== */
 let peer = null;
-let startTime = null;
-let elapsedInterval = null;
+let localStream = null;
+let connectedCalls = [];
+let studentCount = 0;
 
-const remoteVideo = document.getElementById('remoteVideo');
-const loaderIcon = document.getElementById('loaderIcon');
-const notStartedOverlay = document.getElementById('notStartedOverlay');
-const retryBtn = document.getElementById('retryBtn');
-const controlsBar = document.getElementById('controlsBar');
-const playPauseBtn = document.getElementById('playPauseBtn');
-const volBtn = document.getElementById('volBtn');
-const fsBtn = document.getElementById('fsBtn');
-const elapsedTime = document.getElementById('elapsedTime');
-const statusLine = document.getElementById('statusLine');
-const player = document.getElementById('player');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusBox = document.getElementById('statusBox');
+const localVideo = document.getElementById('localVideo');
+const statRow = document.getElementById('statRow');
+const studentCountEl = document.getElementById('studentCount');
+const setupBlock = document.getElementById('setupBlock');
+const linkBox = document.getElementById('linkBox');
+const shareLinkInput = document.getElementById('shareLink');
+const copyBtn = document.getElementById('copyBtn');
+const liveTag = document.getElementById('liveTag');
+const mediaControls = document.getElementById('mediaControls');
+const micBtn = document.getElementById('micBtn');
+const camBtn = document.getElementById('camBtn');
+const qualitySelect = document.getElementById('qualitySelect');
+
+const QUALITY_MAP = {
+  '480': { width: { ideal: 854 }, height: { ideal: 480 } },
+  '720': { width: { ideal: 1280 }, height: { ideal: 720 } },
+  '1080': { width: { ideal: 1920 }, height: { ideal: 1080 } }
+};
+
+function showStatus(msg, isError){ statusBox.textContent = msg; statusBox.classList.add('show'); statusBox.classList.toggle('err', !!isError); }
+function updateCount(){ studentCountEl.textContent = studentCount; }
+function buildStudentLink(){ return window.location.href.replace(/admin\.html.*$/, 'student.html'); }
+
+/* A student can pick "Low/Medium" from their own player if their internet is
+   slow. We don't run a media server, but WebRTC lets us set a lower
+   resolution/bitrate on that ONE student's connection specifically — other
+   students keep watching at full quality. */
+const STUDENT_QUALITY_MAP = {
+  low:    { scaleResolutionDownBy: 4, maxBitrate: 250000 },
+  medium: { scaleResolutionDownBy: 2, maxBitrate: 600000 },
+  high:   { scaleResolutionDownBy: 1, maxBitrate: 2500000 },
+  auto:   { scaleResolutionDownBy: 1, maxBitrate: 2500000 }
+};
+
+function applyQualityToCall(call, pref) {
+  const pc = call.peerConnection;
+  if (!pc) return;
+  const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+  if (!sender) return;
+  const cfg = STUDENT_QUALITY_MAP[pref] || STUDENT_QUALITY_MAP.auto;
+  const params = sender.getParameters();
+  if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+  params.encodings[0].scaleResolutionDownBy = cfg.scaleResolutionDownBy;
+  params.encodings[0].maxBitrate = cfg.maxBitrate;
+  sender.setParameters(params).catch(() => {});
+}
 
 const iceConfig = {
   iceServers: [
@@ -230,83 +297,170 @@ const iceConfig = {
   ]
 };
 
-function createDummyStream() {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioCtx.createOscillator();
-  const audioDst = audioCtx.createMediaStreamDestination();
-  oscillator.connect(audioDst);
-  oscillator.start();
-  const audioTrack = audioDst.stream.getAudioTracks()[0];
-  const canvas = document.createElement('canvas');
-  canvas.width = 2; canvas.height = 2;
-  canvas.getContext('2d').fillRect(0, 0, 2, 2);
-  const videoTrack = canvas.captureStream(1).getVideoTracks()[0];
-  return new MediaStream([audioTrack, videoTrack]);
-}
+startBtn.addEventListener('click', async () => {
+  const roomId = ROOM_ID;
+  startBtn.disabled = true;
+  showStatus('Requesting camera access...', false);
 
-function pad(n){ return n < 10 ? '0' + n : '' + n; }
-function startElapsedTimer(){ startTime = Date.now(); elapsedInterval = setInterval(() => { const secs = Math.floor((Date.now() - startTime)/1000); elapsedTime.textContent = pad(Math.floor(secs/60)) + ':' + pad(secs%60); }, 1000); }
-function stopElapsedTimer(){ if (elapsedInterval) clearInterval(elapsedInterval); }
+  const chosenQuality = QUALITY_MAP[qualitySelect.value] || QUALITY_MAP['720'];
 
-function showNotStarted(){ loaderIcon.style.display='none'; controlsBar.style.display='none'; notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
-function hideNotStarted(){ notStartedOverlay.classList.remove('show'); }
-
-function attemptJoin() {
-  hideNotStarted();
-  loaderIcon.style.display = 'flex';
-  controlsBar.style.display = 'none';
-
-  peer = new Peer(undefined, { debug: 1, config: iceConfig });
-
-  peer.on('open', () => {
-    const dummyStream = createDummyStream();
-    const call = peer.call(ROOM_ID, dummyStream);
-    if (!call) { showNotStarted(); return; }
-
-    call.on('stream', (remoteStream) => {
-      loaderIcon.style.display = 'none';
-      remoteVideo.srcObject = remoteStream;
-      remoteVideo.play().catch(() => {});
-      controlsBar.style.display = 'flex';
-      statusLine.textContent = 'You are connected to the live class.';
-      startElapsedTimer();
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { ...chosenQuality, frameRate: { ideal: 30 } },
+      audio: true
     });
-    call.on('close', () => { stopElapsedTimer(); showNotStarted(); });
-    call.on('error', () => { showNotStarted(); });
+    localVideo.srcObject = localStream;
+    localVideo.style.display = 'block';
+  } catch (err) {
+    showStatus('Camera access denied: ' + err.message, true);
+    startBtn.disabled = false;
+    return;
+  }
+
+  peer = new Peer(roomId, { debug: 1, config: iceConfig });
+
+  peer.on('open', (id) => {
+    showStatus("You're live! Send the link below to students.", false);
+    setupBlock.style.display = 'none';
+    stopBtn.style.display = 'block';
+    statRow.style.display = 'flex';
+    liveTag.classList.add('show');
+    mediaControls.style.display = 'flex';
+
+    const link = buildStudentLink();
+    shareLinkInput.value = link;
+    linkBox.classList.add('show');
+  });
+
+  peer.on('call', (call) => {
+    call.answer(localStream);
+    connectedCalls.push(call);
+    studentCount++;
+    updateCount();
+
+    const meta = call.metadata || {};
+    let unsubQuality = null;
+    if (meta.clientId) {
+      unsubQuality = db.collection('rooms').doc(ROOM_ID).collection('students').doc(meta.clientId)
+        .onSnapshot(doc => {
+          const pref = doc.exists ? (doc.data().qualityPref || 'auto') : 'auto';
+          applyQualityToCall(call, pref);
+        });
+    }
+
+    call.on('close', () => {
+      studentCount = Math.max(0, studentCount - 1);
+      updateCount();
+      connectedCalls = connectedCalls.filter(c => c !== call);
+      if (unsubQuality) unsubQuality();
+    });
   });
 
   peer.on('error', (err) => {
-    if (err.type === 'peer-unavailable') showNotStarted();
-    else { loaderIcon.style.display = 'none'; statusLine.textContent = 'Could not connect: ' + err.type; }
+    if (err.type === 'unavailable-id') {
+      showStatus('This Room ID is already in use.', true);
+      startBtn.disabled = false;
+      peer.destroy();
+    } else {
+      showStatus('Error: ' + err.type, true);
+    }
   });
-}
-
-retryBtn.addEventListener('click', () => { if (peer) peer.destroy(); attemptJoin(); });
-
-playPauseBtn.addEventListener('click', () => {
-  if (remoteVideo.paused) { remoteVideo.play(); playPauseBtn.textContent = '⏸'; }
-  else { remoteVideo.pause(); playPauseBtn.textContent = '▶'; }
 });
-volBtn.addEventListener('click', () => {
-  remoteVideo.muted = !remoteVideo.muted;
-  if (!remoteVideo.muted) remoteVideo.play().catch(() => {});
-  volBtn.textContent = remoteVideo.muted ? '🔇' : '🔊';
+
+micBtn.addEventListener('click', () => {
+  if (!localStream) return;
+  const track = localStream.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  micBtn.textContent = track.enabled ? '🎤 Mic ON' : '🔇 Mic OFF';
+  micBtn.classList.toggle('off', !track.enabled);
 });
-fsBtn.addEventListener('click', () => {
-  if (!document.fullscreenElement) player.requestFullscreen().catch(() => {});
-  else document.exitFullscreen();
+
+camBtn.addEventListener('click', () => {
+  if (!localStream) return;
+  const track = localStream.getVideoTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  camBtn.textContent = track.enabled ? '📷 Camera ON' : '📷 Camera OFF';
+  camBtn.classList.toggle('off', !track.enabled);
+});
+
+/* Change broadcast resolution while already live — grabs a fresh camera
+   stream at the new resolution and swaps the video track into every
+   active student connection, without needing to restart the broadcast. */
+qualitySelect.addEventListener('change', async () => {
+  if (!localStream || !peer) return; // not live yet — the new value just applies next time Start is pressed
+  const chosenQuality = QUALITY_MAP[qualitySelect.value] || QUALITY_MAP['720'];
+  showStatus('Switching live quality to ' + qualitySelect.value + 'p...', false);
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { ...chosenQuality, frameRate: { ideal: 30 } },
+      audio: false
+    });
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const oldVideoTrack = localStream.getVideoTracks()[0];
+    const wasEnabled = oldVideoTrack ? oldVideoTrack.enabled : true;
+    newVideoTrack.enabled = wasEnabled;
+
+    if (oldVideoTrack) { localStream.removeTrack(oldVideoTrack); oldVideoTrack.stop(); }
+    localStream.addTrack(newVideoTrack);
+    localVideo.srcObject = localStream;
+
+    connectedCalls.forEach(call => {
+      const pc = call.peerConnection;
+      if (!pc) return;
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) sender.replaceTrack(newVideoTrack);
+    });
+
+    showStatus('Live quality is now ' + qualitySelect.value + 'p.', false);
+  } catch (err) {
+    showStatus('Could not switch quality: ' + err.message, true);
+  }
+});
+
+copyBtn.addEventListener('click', () => {
+  shareLinkInput.select();
+  navigator.clipboard.writeText(shareLinkInput.value).then(() => {
+    copyBtn.textContent = 'Copied ✓';
+    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+  }).catch(() => { document.execCommand('copy'); });
+});
+
+stopBtn.addEventListener('click', () => {
+  connectedCalls.forEach(c => c.close());
+  connectedCalls = [];
+  studentCount = 0;
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (peer) peer.destroy();
+  localVideo.style.display = 'none';
+  mediaControls.style.display = 'none';
+  micBtn.textContent = '🎤 Mic ON'; micBtn.classList.remove('off');
+  camBtn.textContent = '📷 Camera ON'; camBtn.classList.remove('off');
+  stopBtn.style.display = 'none';
+  statRow.style.display = 'none';
+  liveTag.classList.remove('show');
+  linkBox.classList.remove('show');
+  setupBlock.style.display = 'block';
+  startBtn.disabled = false;
+  showStatus('Broadcast stopped.', false);
 });
 
 /* ===== Chat ===== */
 const chatList = document.getElementById('chatList');
-const chatEmpty = document.getElementById('chatEmpty');
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
+const charCounter = document.getElementById('charCounter');
+
+chatInput.addEventListener('input', () => {
+  const len = chatInput.value.length;
+  charCounter.textContent = len + '/50';
+  charCounter.classList.toggle('limit', len >= 50);
+});
 
 function listenChat() {
   messagesRef().orderBy('ts', 'asc').limitToLast(150).onSnapshot(snap => {
     chatList.innerHTML = '';
-    if (snap.empty) { chatList.appendChild(chatEmpty); return; }
     snap.forEach(doc => {
       const m = doc.data();
       const div = document.createElement('div');
@@ -318,64 +472,214 @@ function listenChat() {
   });
 }
 
-function sendStudentMsg() {
-  const text = chatInput.value.trim();
+function sendAdminMsg() {
+  const text = chatInput.value.trim().slice(0, 50);
   if (!text) return;
-  messagesRef().add({ name: studentName, text, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
+  messagesRef().add({ name: 'Teacher', text, isAdmin: true, ts: firebase.firestore.FieldValue.serverTimestamp() });
   chatInput.value = '';
+  charCounter.textContent = '0/50';
+  charCounter.classList.remove('limit');
 }
-chatSendBtn.addEventListener('click', sendStudentMsg);
-chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendStudentMsg(); });
+chatSendBtn.addEventListener('click', sendAdminMsg);
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendAdminMsg(); });
+listenChat();
+
+/* ===== Students & Block ===== */
+function studentsRef(){ return roomRef().collection('students'); }
+function blockedRef(cid){ return roomRef().collection('blocked').doc(cid); }
+
+const studentsList = document.getElementById('studentsList');
+const studentsEmpty = document.getElementById('studentsEmpty');
+
+let rawStudents = [];
+let blockedMap = {};
+
+function refreshStudentsView() {
+  const now = Date.now();
+  const online = rawStudents.filter(s => {
+    const t = s.lastActive && s.lastActive.toMillis ? s.lastActive.toMillis() : 0;
+    return now - t < 45000; // seen in the last 45s
+  });
+  renderStudents(online);
+}
+
+function renderStudents(students) {
+  if (!students.length) {
+    studentsList.innerHTML = '';
+    studentsList.appendChild(studentsEmpty);
+    return;
+  }
+  studentsList.innerHTML = students.map(s => {
+    const b = blockedMap[s.id];
+    const rowClass = b ? (b.type === 'full' ? 'is-full-blocked' : 'is-chat-blocked') : '';
+    const badge = b ? '<span class="s-badge ' + (b.type === 'full' ? 'full' : 'chat') + '">' + (b.type === 'full' ? 'Blocked' : 'Chat Muted') + '</span>' : '';
+    return '<div class="student-row ' + rowClass + '">' +
+      '<span class="s-name">' + escapeHtml(s.name || 'Student') + '</span>' + badge +
+      '<button class="s-btn chat-toggle' + (b && b.type === 'chat' ? ' active' : '') + '" data-id="' + s.id + '">' + (b && b.type === 'chat' ? 'Unmute' : 'Mute Chat') + '</button>' +
+      '<button class="s-btn full-toggle' + (b && b.type === 'full' ? ' active' : '') + '" data-id="' + s.id + '">' + (b && b.type === 'full' ? 'Unblock' : 'Block') + '</button>' +
+    '</div>';
+  }).join('');
+
+  studentsList.querySelectorAll('.chat-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const s = students.find(x => x.id === id) || {};
+      const cur = blockedMap[id];
+      if (cur && cur.type === 'chat') blockedRef(id).delete();
+      else blockedRef(id).set({ type: 'chat', name: s.name || '', blockedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+  });
+  studentsList.querySelectorAll('.full-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const s = students.find(x => x.id === id) || {};
+      const cur = blockedMap[id];
+      if (cur && cur.type === 'full') blockedRef(id).delete();
+      else blockedRef(id).set({ type: 'full', name: s.name || '', blockedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+  });
+}
+
+function listenStudents() {
+  studentsRef().onSnapshot(snap => {
+    rawStudents = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      rawStudents.push({ id: doc.id, name: d.name, lastActive: d.lastActive });
+    });
+    refreshStudentsView();
+  });
+}
+
+function listenBlocked() {
+  roomRef().collection('blocked').onSnapshot(snap => {
+    blockedMap = {};
+    snap.forEach(doc => { blockedMap[doc.id] = doc.data(); });
+    refreshStudentsView();
+  });
+}
+
+listenStudents();
+listenBlocked();
+setInterval(refreshStudentsView, 15000); // clear out students who went offline
 
 /* ===== Poll ===== */
-const pollBox = document.getElementById('pollBox');
-const pollQuestionEl = document.getElementById('pollQuestionEl');
-const pollOptionsEl = document.getElementById('pollOptionsEl');
-const pollResultsArea = document.getElementById('pollResultsArea');
-const pollStatusEl = document.getElementById('pollStatusEl');
+const pollFormArea = document.getElementById('pollFormArea');
+const pollLiveArea = document.getElementById('pollLiveArea');
+const pollQuestion = document.getElementById('pollQuestion');
+const pollOptionsList = document.getElementById('pollOptionsList');
+const addOptionBtn = document.getElementById('addOptionBtn');
+const pollDuration = document.getElementById('pollDuration');
+const startPollBtn = document.getElementById('startPollBtn');
+const pollLiveQuestion = document.getElementById('pollLiveQuestion');
+const pollResults = document.getElementById('pollResults');
+const pollTimer = document.getElementById('pollTimer');
+const closePollBtn = document.getElementById('closePollBtn');
 
-function renderResultsBars(data) {
+let pollAutoCloseTimer = null;
+
+function renumberOptionRows() {
+  const rows = pollOptionsList.querySelectorAll('.poll-opt-row');
+  rows.forEach((row, i) => {
+    row.querySelector('.poll-opt-input').placeholder = 'Option ' + (i + 1);
+    row.querySelector('.remove-opt-btn').disabled = rows.length <= 2;
+  });
+}
+
+function createOptionRow() {
+  const row = document.createElement('div');
+  row.className = 'poll-opt-row';
+  row.innerHTML = '<input type="text" class="poll-opt-input" placeholder="Option">' +
+    '<button type="button" class="remove-opt-btn" title="Remove option">✕</button>';
+  row.querySelector('.remove-opt-btn').addEventListener('click', () => {
+    if (pollOptionsList.querySelectorAll('.poll-opt-row').length > 2) {
+      row.remove();
+      renumberOptionRows();
+    }
+  });
+  return row;
+}
+
+function addOptionRow() {
+  pollOptionsList.appendChild(createOptionRow());
+  renumberOptionRows();
+}
+
+function resetOptionRows() {
+  pollOptionsList.innerHTML = '';
+  addOptionRow();
+  addOptionRow();
+}
+
+addOptionBtn.addEventListener('click', addOptionRow);
+resetOptionRows();
+
+startPollBtn.addEventListener('click', () => {
+  const question = pollQuestion.value.trim();
+  const options = Array.from(pollOptionsList.querySelectorAll('.poll-opt-input'))
+    .map(inp => inp.value.trim()).filter(Boolean);
+  const minutes = parseFloat(pollDuration.value);
+
+  if (!question || options.length < 2 || !minutes || minutes <= 0) {
+    showStatus('Please fill in a question, at least 2 options, and a valid duration for the poll.', true);
+    return;
+  }
+
+  const durationSec = Math.round(minutes * 60);
+  pollDocRef().set({
+    question, options, durationSec,
+    status: 'open',
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    endsAt: Date.now() + durationSec * 1000,
+    votes: {}
+  }).then(() => {
+    if (pollAutoCloseTimer) clearTimeout(pollAutoCloseTimer);
+    pollAutoCloseTimer = setTimeout(() => { closePoll(); }, durationSec * 1000);
+    pollQuestion.value = ''; pollDuration.value = ''; resetOptionRows();
+  });
+});
+
+function closePoll() {
+  pollDocRef().update({ status: 'closed' });
+}
+closePollBtn.addEventListener('click', closePoll);
+
+function renderPollResults(data) {
+  pollLiveQuestion.textContent = data.question;
   const votes = data.votes || {};
   const counts = new Array(data.options.length).fill(0);
   Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
   const total = counts.reduce((a, b) => a + b, 0) || 1;
-  pollResultsArea.innerHTML = data.options.map((opt, i) => {
+  pollResults.innerHTML = data.options.map((opt, i) => {
     const pct = Math.round((counts[i] / total) * 100);
-    return '<div class="poll-bar-row"><div class="poll-bar-label"><span>' + escapeHtml(opt) + '</span><span>' + counts[i] + '</span></div><div class="poll-bar-track"><div class="poll-bar-fill" style="width:' + pct + '%"></div></div></div>';
+    return '<div class="poll-bar-row"><div class="poll-bar-label"><span>' + escapeHtml(opt) + '</span><span>' + counts[i] + ' votes</span></div><div class="poll-bar-track"><div class="poll-bar-fill" style="width:' + pct + '%"></div></div></div>';
   }).join('');
 }
 
 function listenPoll() {
   pollDocRef().onSnapshot(doc => {
-    if (!doc.exists) { pollBox.classList.remove('show'); return; }
+    if (!doc.exists) {
+      pollFormArea.style.display = 'block';
+      pollLiveArea.style.display = 'none';
+      return;
+    }
     const data = doc.data();
-    pollBox.classList.add('show');
-    pollQuestionEl.textContent = data.question;
-    const voted = data.votes && data.votes[clientId] !== undefined;
-
+    renderPollResults(data);
     if (data.status === 'closed') {
-      pollOptionsEl.innerHTML = '';
-      renderResultsBars(data);
-      pollStatusEl.textContent = 'This poll is closed — results are above.';
-    } else if (voted) {
-      pollOptionsEl.innerHTML = '';
-      pollResultsArea.innerHTML = '';
-      pollStatusEl.textContent = 'Your vote has been recorded ✓ — waiting for results.';
+      pollFormArea.style.display = 'block';
+      pollLiveArea.style.display = 'block';
+      pollTimer.textContent = 'This poll is closed.';
+      closePollBtn.style.display = 'none';
     } else {
-      pollResultsArea.innerHTML = '';
-      pollStatusEl.textContent = '';
-      pollOptionsEl.innerHTML = data.options.map((opt, i) =>
-        '<button class="poll-opt-btn" data-i="' + i + '">' + escapeHtml(opt) + '</button>'
-      ).join('');
-      pollOptionsEl.querySelectorAll('.poll-opt-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.dataset.i);
-          pollDocRef().update({ ['votes.' + clientId]: idx });
-        });
-      });
+      pollFormArea.style.display = 'none';
+      pollLiveArea.style.display = 'block';
+      closePollBtn.style.display = 'block';
+      const remain = Math.max(0, Math.round((data.endsAt - Date.now()) / 1000));
+      pollTimer.textContent = 'Time left: ' + remain + ' seconds';
     }
   });
 }
+listenPoll();
 </script>
 </body>
 </html>
