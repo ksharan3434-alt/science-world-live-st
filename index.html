@@ -27,6 +27,18 @@
   .rotate-btn{ display:inline-flex; align-items:center; gap:8px; width:auto; margin-bottom:14px; padding:9px 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
   .rotate-btn:active{ transform:translateY(2px); box-shadow:none; }
   .rotate-btn .icon{ font-size:1rem; }
+
+  /* Forced landscape (CSS rotation trick) — works even where screen.orientation.lock() is blocked */
+  body.force-landscape{ overflow:hidden; }
+  body.force-landscape .player{
+    position:fixed !important; top:50% !important; left:50% !important;
+    width:100vh !important; height:100vw !important;
+    transform:translate(-50%,-50%) rotate(90deg) !important;
+    transform-origin:center center; margin:0 !important; border-radius:0 !important;
+    z-index:9999;
+  }
+  .exit-rotate-btn{ display:none; position:fixed; top:12px; right:12px; z-index:10000; width:34px; height:34px; border-radius:50%; background:rgba(0,0,0,0.6); color:#fff; border:none; font-size:1.1rem; cursor:pointer; align-items:center; justify-content:center; }
+  body.force-landscape .exit-rotate-btn{ display:flex; }
   .layout{ display:flex; gap:22px; align-items:flex-start; }
 
   .video-col{ flex:1 1 640px; min-width:0; }
@@ -147,6 +159,7 @@
 <div class="page">
   <div class="back-link">← Back</div>
   <button class="rotate-btn" id="rotateBtn"><span class="icon">🔄</span> Rotate to Landscape</button>
+  <button class="exit-rotate-btn" id="exitRotateBtn" title="Exit landscape">✕</button>
   <div class="layout">
 
     <div class="video-col">
@@ -456,33 +469,46 @@ volSlider.addEventListener('input', () => {
   if (v > 0) remoteVideo.play().catch(() => {});
 });
 const rotateBtn = document.getElementById('rotateBtn');
+const exitRotateBtn = document.getElementById('exitRotateBtn');
+
+function applyForcedLandscape() {
+  document.body.classList.add('force-landscape');
+}
+function removeForcedLandscape() {
+  document.body.classList.remove('force-landscape');
+}
+
 rotateBtn.addEventListener('click', () => {
-  const goLandscape = () => {
+  const tryCssFallback = () => applyForcedLandscape();
+
+  // Try the real (native) rotate first — best experience when the browser allows it.
+  const attemptNativeLock = () => {
     if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock('landscape').then(() => {
-        rotateBtn.textContent = '';
-        const ic = document.createElement('span'); ic.className = 'icon'; ic.textContent = '✅';
-        rotateBtn.appendChild(ic);
-        rotateBtn.append(' Rotated');
-        setTimeout(() => {
-          rotateBtn.innerHTML = '<span class="icon">🔄</span> Rotate to Landscape';
-        }, 1500);
-      }).catch(() => {
-        alert('Is browser me auto-rotate allow nahi hai. Please apne phone ko manually landscape (horizontal) me ghumayein.');
-      });
+      screen.orientation.lock('landscape').catch(tryCssFallback);
     } else {
-      alert('Is browser me auto-rotate supported nahi hai (jaise iPhone Safari). Please apne phone ko manually landscape (horizontal) me ghumayein.');
+      tryCssFallback();
     }
   };
-  // Orientation lock only works while in fullscreen on most browsers, so enter fullscreen first.
+
   if (!document.fullscreenElement) {
-    player.requestFullscreen().then(goLandscape).catch(() => {
-      alert('Fullscreen shuru nahi ho paya. Please apne phone ko manually landscape (horizontal) me ghumayein.');
-    });
+    player.requestFullscreen().then(attemptNativeLock).catch(tryCssFallback);
   } else {
-    goLandscape();
+    attemptNativeLock();
   }
 });
+
+exitRotateBtn.addEventListener('click', () => {
+  removeForcedLandscape();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+});
+
+// If the phone is actually turned to landscape naturally, drop the CSS trick so it doesn't double-rotate.
+window.addEventListener('resize', () => {
+  if (document.body.classList.contains('force-landscape') && window.matchMedia('(orientation: landscape)').matches) {
+    removeForcedLandscape();
+  }
+});
+
 fsBtn.addEventListener('click', () => {
   if (!document.fullscreenElement) {
     player.requestFullscreen().then(() => {
