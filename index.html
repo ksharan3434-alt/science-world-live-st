@@ -17,8 +17,8 @@
   *{box-sizing:border-box;}
   body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
 
-  .topbar{ background:#0e1614; padding:12px 24px; display:flex; align-items:center; gap:10px; }
-  .logo-img{ height:34px; width:auto; border-radius:6px; display:block; }
+  .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
+  .logo-img{ height:32px; display:block; }
   .logo-text{ color:#fff; font-weight:700; font-size:1.15rem; }
   .logo-badge{ background:var(--red); color:#fff; font-weight:800; font-size:0.82rem; padding:4px 9px; border-radius:5px; box-shadow:0 2px 0 var(--red-dark); }
 
@@ -28,19 +28,20 @@
   @media (max-width:900px){ .layout{ flex-direction:column; } }
 
   .video-col{ flex:1 1 640px; min-width:0; }
-  .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
-  video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
-
-  /* Mobile: video pinned to the top like a YouTube-style player, everything else stacked directly below */
   @media (max-width:900px){
-    .page{ padding-left:0; padding-right:0; padding-top:0; }
-    .back-link{ padding:10px 14px 0; }
-    .layout{ gap:0; }
-    .video-col{ flex:0 0 auto; width:100%; min-width:0; }
-    .player{ border-radius:0; aspect-ratio:auto; width:100%; height:46vh; max-height:420px; }
-    .below-video{ margin:10px 14px 0; }
-    .side-col{ width:100%; padding:0 14px; }
+    .layout{ flex-direction:column; gap:0; }
+    .page{ padding:0 0 40px; }
+    .back-link{ padding:12px 16px 8px; margin-bottom:0; }
+    .video-col{ position:sticky; top:0; z-index:15; background:#000; }
+    .player{ border-radius:0; aspect-ratio:auto; height:48vh; max-height:420px; min-height:200px; box-shadow:none; }
+    .below-video{ display:none; }
+    .side-col{ padding:0 12px; margin-top:0; }
+    .combo-box{ border-radius:12px 12px 0 0; margin-bottom:0; border-top:none; }
   }
+  .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
+  .player:fullscreen, .player:-webkit-full-screen{ aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
+  .player:fullscreen video, .player:-webkit-full-screen video{ object-fit:contain; }
+  video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
 
   .center-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.95rem; flex-direction:column; gap:12px; text-align:center; background:rgba(0,0,0,0.4); }
   .spinner{ width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:#fff; animation:spin 0.8s linear infinite; }
@@ -87,36 +88,20 @@
   /* Branding watermark (shows in normal view and fullscreen) */
   .branding-watermark{ position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.45); color:#fff; font-size:0.68rem; font-weight:700; padding:4px 9px; border-radius:6px; letter-spacing:0.02em; z-index:4; pointer-events:none; }
 
-  /* Always-on-screen fullscreen toggle — visible even before the class connects */
-  .fs-toggle-corner{ position:absolute; top:8px; right:8px; z-index:8; width:36px; height:36px; border-radius:8px; border:none; background:rgba(0,0,0,0.5); color:#fff; font-size:1.15rem; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-  .fs-toggle-corner:hover{ background:rgba(0,0,0,0.72); }
-  @media (max-width:480px){ .fs-toggle-corner{ width:32px; height:32px; font-size:1rem; top:6px; right:6px; } }
+  /* Replay nav overlay — appears above the controls bar only in replay mode */
+  .replay-nav{ position:absolute; left:0; right:0; bottom:44px; padding:0 14px; display:flex; align-items:center; justify-content:center; gap:10px; z-index:6; }
+  .replay-nav .s-btn{ width:auto; padding:6px 12px; font-size:0.76rem; border-radius:6px; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.25); color:#fff; font-weight:600; cursor:pointer; }
+  .replay-nav .s-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+  .replay-nav-label{ color:#fff; font-size:0.74rem; background:rgba(0,0,0,0.55); padding:5px 10px; border-radius:6px; font-weight:600; }
 
-  /* Make the video actually fill the whole screen in fullscreen mode */
-  .player:fullscreen{ width:100vw; height:100vh; border-radius:0; display:flex; align-items:center; justify-content:center; aspect-ratio:auto; }
-  .player:-webkit-full-screen{ width:100vw; height:100vh; border-radius:0; display:flex; align-items:center; justify-content:center; }
-  .player:-moz-full-screen{ width:100vw; height:100vh; border-radius:0; display:flex; align-items:center; justify-content:center; }
-  .player:fullscreen video, .player:-webkit-full-screen video, .player:-moz-full-screen video{ width:100%; height:100%; object-fit:contain; }
+  /* Volume slider — filled portion (current level) red, rest white; background set via JS */
+  .vol-slider{ width:64px; -webkit-appearance:none; appearance:none; height:5px; border-radius:3px; outline:none; cursor:pointer; margin:0; background:linear-gradient(to right, var(--red) 100%, #fff 100%); }
+  .vol-slider::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid var(--red); cursor:pointer; margin-top:-3.5px; }
+  .vol-slider::-moz-range-thumb{ width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid var(--red); cursor:pointer; }
+  .vol-slider::-webkit-slider-runnable-track{ height:5px; border-radius:3px; background:transparent; }
+  .vol-slider::-moz-range-track{ height:5px; border-radius:3px; background:transparent; }
 
-  /* YouTube-style seek bar (built into the player, drag left to rewind ~1 min).
-     Played portion is red, remaining portion is white — driven by a --fill
-     custom property that JS updates on input/programmatic changes. */
-  .seek-row{ position:absolute; left:0; right:0; bottom:44px; padding:0 14px; display:flex; align-items:center; gap:8px; z-index:6; }
-  .seek-row input[type=range]{ --fill:100%; flex:1; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px; background:transparent; outline:none; cursor:pointer; margin:0; }
-  .seek-row input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:13px; height:13px; border-radius:50%; background:var(--red); cursor:pointer; margin-top:-4.5px; border:2px solid #fff; }
-  .seek-row input[type=range]::-moz-range-thumb{ width:13px; height:13px; border-radius:50%; background:var(--red); border:2px solid #fff; cursor:pointer; }
-  .seek-row input[type=range]::-webkit-slider-runnable-track{ height:4px; border-radius:2px; background:linear-gradient(to right, var(--red) 0%, var(--red) var(--fill), rgba(255,255,255,0.35) var(--fill), rgba(255,255,255,0.35) 100%); }
-  .seek-row input[type=range]::-moz-range-track{ height:4px; border-radius:2px; background:rgba(255,255,255,0.35); }
-  .seek-row input[type=range]::-moz-range-progress{ height:4px; border-radius:2px; background:var(--red); }
-  .seek-label{ color:#fff; font-size:0.68rem; font-variant-numeric:tabular-nums; min-width:36px; text-align:right; }
-
-  /* Volume slider inline in the controls bar — same red-behind / white-ahead treatment */
-  .vol-slider{ --fill:100%; width:64px; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px; background:transparent; outline:none; cursor:pointer; margin:0; }
-  .vol-slider::-webkit-slider-thumb{ -webkit-appearance:none; width:11px; height:11px; border-radius:50%; background:#fff; cursor:pointer; margin-top:-3.5px; border:2px solid var(--red); }
-  .vol-slider::-moz-range-thumb{ width:11px; height:11px; border-radius:50%; background:#fff; border:2px solid var(--red); cursor:pointer; }
-  .vol-slider::-webkit-slider-runnable-track{ height:4px; border-radius:2px; background:linear-gradient(to right, var(--red) 0%, var(--red) var(--fill), #ffffff var(--fill), #ffffff 100%); }
-  .vol-slider::-moz-range-track{ height:4px; border-radius:2px; background:#ffffff; }
-  .vol-slider::-moz-range-progress{ height:4px; border-radius:2px; background:var(--red); }
+  #replayToggleBtn.active{ background:var(--red); }
 
   /* Quality gear menu (data-saver control) */
   .quality-wrap{ position:relative; }
@@ -127,28 +112,27 @@
 
   /* Mobile tweaks — most students are on phones */
   @media (max-width:480px){
-    .page{ padding:0 0 40px; }
-    .topbar{ padding:12px 16px; }
-    .controls-bar{ gap:8px; padding:22px 8px 8px; }
-    .ctrl-btn{ width:32px; height:32px; font-size:1rem; }
-    .vol-slider{ width:42px; }
+    .topbar{ padding:10px 16px; }
+    .logo-img{ height:26px; }
+    .controls-bar{ gap:6px; padding:20px 6px 8px; }
+    .ctrl-btn{ width:30px; height:30px; font-size:0.95rem; }
+    .vol-slider{ width:38px; }
     .elapsed{ display:none; }
-    .live-pill{ font-size:0.66rem; padding:3px 8px; }
+    .live-pill{ font-size:0.64rem; padding:3px 7px; }
     .quality-menu{ min-width:150px; }
     .branding-watermark{ font-size:0.6rem; padding:3px 7px; top:8px; left:8px; }
     .side-box{ padding:13px; }
     .name-card{ padding:24px; }
+    .replay-nav{ bottom:40px; gap:6px; }
+    .replay-nav .s-btn{ padding:5px 9px; font-size:0.7rem; }
+    .replay-nav-label{ font-size:0.68rem; padding:4px 8px; }
     .player{ height:42vh; }
   }
 
-  /* Merged Poll + Chat card */
+  /* Poll (nested inside the combined poll+chat block) */
   .combo-box{ display:flex; flex-direction:column; }
-  .chat-section{ padding-top:0; }
-  .poll-box.show + .chat-section{ border-top:1.5px dashed #ded6c2; padding-top:14px; margin-top:2px; }
-
-  /* Poll */
   .poll-box{ display:none; }
-  .poll-box.show{ display:block; margin-bottom:14px; }
+  .poll-box.show{ display:block; padding-bottom:16px; margin-bottom:16px; border-bottom:1.5px solid #ded6c2; }
   .poll-question{ font-weight:700; margin-bottom:10px; font-size:0.92rem; }
   .poll-opt-btn{ width:100%; text-align:left; padding:11px 13px; margin-bottom:8px; border-radius:8px; border:1.5px solid #d7d0bd; background:#fbfaf6; color:var(--ink); font-size:0.85rem; cursor:pointer; }
   .poll-opt-btn:hover{ border-color:var(--accent); background:var(--accent-soft); }
@@ -183,7 +167,7 @@
 </div>
 
 <div class="topbar">
-  <img src="logo.png" alt="Logo" class="logo-img" onerror="this.style.display='none'">
+  <img src="logo.png" alt="Science World" class="logo-img" id="logoImg" onerror="this.style.display='none';">
   <span class="logo-text">Science</span>
   <span class="logo-badge">World</span>
 </div>
@@ -196,7 +180,6 @@
       <div class="player" id="player">
         <video id="remoteVideo" autoplay playsinline muted></video>
         <div class="branding-watermark">🔬 Science World</div>
-        <button class="fs-toggle-corner" id="fsBtn" title="Fullscreen">⛶</button>
         <div class="center-icon" id="loaderIcon">
           <div class="spinner"></div>
           <span>Connecting to class...</span>
@@ -213,9 +196,10 @@
           <p class="notstarted-sub">The teacher has blocked you from this live class. If you think this is a mistake, please talk to your teacher.</p>
         </div>
 
-        <div class="seek-row" id="seekRow" style="display:none;">
-          <input type="range" id="seekBar" min="0" max="60" value="60" step="1">
-          <span class="seek-label" id="seekLabel">LIVE</span>
+        <div class="replay-nav" id="replayNav" style="display:none;">
+          <button class="s-btn" id="replayPrevBtn">⏮ -10s</button>
+          <span class="replay-nav-label" id="replayNavLabel">Replay</span>
+          <button class="s-btn" id="replayNextBtn">+10s ⏭</button>
         </div>
 
         <div class="controls-bar" id="controlsBar" style="display:none;">
@@ -225,6 +209,7 @@
           <div class="live-pill" id="livePill"><span class="dot"></span> LIVE</div>
           <span class="elapsed" id="elapsedTime">00:00</span>
           <div class="spacer"></div>
+          <button class="ctrl-btn" id="replayToggleBtn" title="Watch last 1 minute">⏪</button>
           <div class="quality-wrap">
             <button class="ctrl-btn" id="qualityBtn" title="Playback Quality">⚙</button>
             <div class="quality-menu" id="qualityMenu">
@@ -234,13 +219,14 @@
               <div class="quality-opt" data-q="low">Low (Data Saver)</div>
             </div>
           </div>
+          <button class="ctrl-btn" id="fsBtn" title="Fullscreen">⛶</button>
         </div>
       </div>
       <div class="below-video" id="statusLine">Welcome to the Science World live class.</div>
     </div>
 
     <div class="side-col">
-      <div class="side-box combo-box" id="comboBox">
+      <div class="side-box combo-box">
         <div class="poll-box" id="pollBox">
           <div class="side-tab">📊 Poll</div>
           <div class="poll-question" id="pollQuestionEl"></div>
@@ -249,7 +235,7 @@
           <div class="poll-status" id="pollStatusEl"></div>
         </div>
 
-        <div class="chat-section" id="chatSection">
+        <div class="chat-section">
           <div class="side-tab">💬 Chat</div>
           <div class="chat-list" id="chatList">
             <div class="chat-empty" id="chatEmpty">No messages yet — you can chat here during the class.</div>
@@ -339,9 +325,11 @@ const fsBtn = document.getElementById('fsBtn');
 const elapsedTime = document.getElementById('elapsedTime');
 const statusLine = document.getElementById('statusLine');
 const player = document.getElementById('player');
-const seekRow = document.getElementById('seekRow');
-const seekBar = document.getElementById('seekBar');
-const seekLabel = document.getElementById('seekLabel');
+const replayNav = document.getElementById('replayNav');
+const replayPrevBtn = document.getElementById('replayPrevBtn');
+const replayNextBtn = document.getElementById('replayNextBtn');
+const replayNavLabel = document.getElementById('replayNavLabel');
+const replayToggleBtn = document.getElementById('replayToggleBtn');
 const livePill = document.getElementById('livePill');
 const qualityBtn = document.getElementById('qualityBtn');
 const qualityMenu = document.getElementById('qualityMenu');
@@ -387,7 +375,7 @@ function listenBlockStatus() {
       notStartedOverlay.classList.remove('show');
       loaderIcon.style.display = 'none';
       controlsBar.style.display = 'none';
-      seekRow.style.display = 'none';
+      replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active');
       stopElapsedTimer();
       stopReplayRecorder();
       if (peer) peer.destroy();
@@ -423,7 +411,7 @@ function pad(n){ return n < 10 ? '0' + n : '' + n; }
 function startElapsedTimer(){ startTime = Date.now(); elapsedInterval = setInterval(() => { const secs = Math.floor((Date.now() - startTime)/1000); elapsedTime.textContent = pad(Math.floor(secs/60)) + ':' + pad(secs%60); }, 1000); }
 function stopElapsedTimer(){ if (elapsedInterval) clearInterval(elapsedInterval); }
 
-function showNotStarted(){ loaderIcon.style.display='none'; controlsBar.style.display='none'; seekRow.style.display='none'; notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
+function showNotStarted(){ loaderIcon.style.display='none'; controlsBar.style.display='none'; replayNav.style.display='none'; replayToggleBtn.classList.remove('active'); notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
 function hideNotStarted(){ notStartedOverlay.classList.remove('show'); }
 
 function attemptJoin() {
@@ -446,12 +434,12 @@ function attemptJoin() {
       remoteVideo.srcObject = remoteStream;
       remoteVideo.play().catch(() => {});
       controlsBar.style.display = 'flex';
-      seekRow.style.display = 'flex';
+      // replay-nav appears only when toggled on, not automatically
       statusLine.textContent = 'You are connected to the live class.';
       startElapsedTimer();
       startReplayRecorder(remoteStream);
     });
-    call.on('close', () => { stopElapsedTimer(); stopReplayRecorder(); seekRow.style.display = 'none'; showNotStarted(); });
+    call.on('close', () => { stopElapsedTimer(); stopReplayRecorder(); replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active'); showNotStarted(); });
     call.on('error', () => { showNotStarted(); });
   });
 
@@ -468,17 +456,22 @@ playPauseBtn.addEventListener('click', () => {
   else { remoteVideo.pause(); playPauseBtn.textContent = '▶'; }
 });
 let userMuted = true;
+function updateVolSliderFill(v) {
+  volSlider.style.background = 'linear-gradient(to right, var(--red) ' + v + '%, #fff ' + v + '%)';
+}
+updateVolSliderFill(100);
+
 volBtn.addEventListener('click', () => {
   remoteVideo.muted = !remoteVideo.muted;
   userMuted = remoteVideo.muted;
-  if (remoteVideo.muted) { volSlider.value = 0; volBtn.textContent = '🔇'; }
+  if (remoteVideo.muted) { volSlider.value = 0; volBtn.textContent = '🔇'; updateVolSliderFill(0); }
   else {
     if (volSlider.value == 0) volSlider.value = 100;
     remoteVideo.volume = volSlider.value / 100;
     remoteVideo.play().catch(() => {});
     volBtn.textContent = volSlider.value < 50 ? '🔉' : '🔊';
+    updateVolSliderFill(volSlider.value);
   }
-  paintSliderFill(volSlider);
 });
 volSlider.addEventListener('input', () => {
   const v = parseInt(volSlider.value, 10);
@@ -486,27 +479,27 @@ volSlider.addEventListener('input', () => {
   userMuted = remoteVideo.muted;
   remoteVideo.volume = v / 100;
   volBtn.textContent = v === 0 ? '🔇' : (v < 50 ? '🔉' : '🔊');
+  updateVolSliderFill(v);
   if (v > 0) remoteVideo.play().catch(() => {});
 });
 fsBtn.addEventListener('click', () => {
-  if (!document.fullscreenElement) player.requestFullscreen().catch(() => {});
-  else document.exitFullscreen();
+  if (!document.fullscreenElement) {
+    player.requestFullscreen().then(() => {
+      // Rotate to landscape automatically, like YouTube — mainly works on Android Chrome;
+      // iOS Safari doesn't support orientation lock, so iPhone users still rotate manually.
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    }).catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
 });
-
-/* Paint a range slider so the portion already "used" is red and the
-   remaining portion is white — used for both the volume slider and the
-   live seek bar. */
-function paintSliderFill(slider) {
-  const min = parseFloat(slider.min) || 0;
-  const max = parseFloat(slider.max) || 100;
-  const val = parseFloat(slider.value) || 0;
-  const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
-  slider.style.setProperty('--fill', pct + '%');
-}
-paintSliderFill(volSlider);
-paintSliderFill(seekBar);
-volSlider.addEventListener('input', () => paintSliderFill(volSlider));
-seekBar.addEventListener('input', () => paintSliderFill(seekBar));
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && screen.orientation && screen.orientation.unlock) {
+    try { screen.orientation.unlock(); } catch (e) {}
+  }
+});
 
 /* ===== Playback quality (data-saver) — a student on a slow connection can
    pick Low/Medium so the teacher's stream sends less data to just them,
@@ -621,11 +614,11 @@ function listenPoll() {
    There's no server-side recording, so this is a browser-only "jugaad":
    the incoming live stream is recorded in rolling 10-second segments in
    the background. Each segment is its own small recording (so it has a
-   valid, playable header), and we keep the last 6 (~60s). The seek bar
-   built into the player lets you drag back into that buffer, YouTube-live
-   style — drag right back to the live edge to resume watching live.
-   It resets if the page is refreshed or the stream drops, and the seek
-   position is only approximate (~1s), not frame-perfect. */
+   valid, playable header), and we keep the last 6 (~60s). Tap the ⏪
+   button in the controls to jump into replay — it plays right in the same
+   full-size video, then ⏮/⏭ step you through the buffered segments.
+   Tap the button again (it turns red) to jump back to live.
+   It resets if the page is refreshed or the stream drops. */
 const REPLAY_SEGMENT_MS = 10000;
 const REPLAY_MAX_SEGMENTS = 6;
 let replaySegments = [];
@@ -634,9 +627,6 @@ let segChunks = [];
 let currentLiveStream = null;
 let isLiveMode = true;
 let currentSegIndex = -1;
-let isScrubbing = false;
-
-function bufferSeconds() { return replaySegments.length * 10; }
 
 function startReplayRecorder(stream) {
   stopReplayRecorder();
@@ -661,7 +651,6 @@ function startReplayRecorder(stream) {
           URL.revokeObjectURL(old.url);
           if (currentSegIndex >= 0) currentSegIndex = Math.max(0, currentSegIndex - 1);
         }
-        if (!isScrubbing && isLiveMode) { seekBar.max = bufferSeconds(); paintSliderFill(seekBar); }
       }
       if (stream.active) recordSegment();
     };
@@ -688,61 +677,49 @@ function goLive() {
   remoteVideo.srcObject = currentLiveStream;
   remoteVideo.muted = userMuted;
   remoteVideo.play().catch(() => {});
-  seekBar.value = seekBar.max;
-  paintSliderFill(seekBar);
-  seekLabel.textContent = 'LIVE';
+  replayNav.style.display = 'none';
+  replayToggleBtn.classList.remove('active');
   livePill.style.opacity = '1';
 }
 
-function seekToSecondsAgo(secondsAgo) {
-  if (!replaySegments.length || secondsAgo <= 1) { goLive(); return; }
-  const clamped = Math.min(secondsAgo, bufferSeconds() - 0.5);
-  const segFromEnd = Math.floor(clamped / 10);
-  const segIndex = Math.max(0, replaySegments.length - 1 - segFromEnd);
-  const offsetInSeg = clamped % 10;
-  const seg = replaySegments[segIndex];
-  if (!seg) { goLive(); return; }
-
+function showReplaySegment(i) {
+  if (i < 0 || i >= replaySegments.length) return;
   isLiveMode = false;
-  currentSegIndex = segIndex;
-  livePill.style.opacity = '0.4';
+  currentSegIndex = i;
+  const seg = replaySegments[i];
   remoteVideo.srcObject = null;
   remoteVideo.src = seg.url;
   remoteVideo.muted = userMuted;
-  remoteVideo.onloadedmetadata = () => {
-    const pos = Math.max(0, (remoteVideo.duration || 10) - offsetInSeg);
-    remoteVideo.currentTime = isFinite(pos) ? pos : 0;
-    remoteVideo.play().catch(() => {});
-  };
-  seekLabel.textContent = '-' + Math.round(secondsAgo) + 's';
+  remoteVideo.play().catch(() => {});
+
+  const stepsAgo = replaySegments.length - i;
+  replayNavLabel.textContent = stepsAgo <= 1 ? 'Most recent 10s' : (stepsAgo * 10) + 's ago';
+  replayPrevBtn.disabled = i === 0;
+  replayNextBtn.disabled = false;
+  replayNav.style.display = 'flex';
+  replayToggleBtn.classList.add('active');
+  livePill.style.opacity = '0.4';
 }
 
-remoteVideo.addEventListener('ended', () => {
-  if (isLiveMode) return;
-  // Auto-advance to the next (more recent) segment, like catching back up to live
-  if (currentSegIndex >= 0 && currentSegIndex < replaySegments.length - 1) {
-    currentSegIndex++;
-    const seg = replaySegments[currentSegIndex];
-    remoteVideo.src = seg.url;
-    remoteVideo.play().catch(() => {});
-    const stepsFromEnd = replaySegments.length - 1 - currentSegIndex;
-    seekLabel.textContent = stepsFromEnd <= 0 ? 'LIVE-ish' : '-' + (stepsFromEnd * 10) + 's';
-    seekBar.value = Math.max(0, seekBar.max - stepsFromEnd * 10);
-    paintSliderFill(seekBar);
+replayToggleBtn.addEventListener('click', () => {
+  if (isLiveMode) {
+    if (!replaySegments.length) return; // buffer still building, nothing to show yet
+    showReplaySegment(replaySegments.length - 1);
   } else {
     goLive();
   }
 });
-
-seekBar.addEventListener('input', () => {
-  isScrubbing = true;
-  const secondsAgo = seekBar.max - parseInt(seekBar.value, 10);
-  seekLabel.textContent = secondsAgo <= 1 ? 'LIVE' : ('-' + secondsAgo + 's');
+replayPrevBtn.addEventListener('click', () => showReplaySegment(currentSegIndex - 1));
+replayNextBtn.addEventListener('click', () => {
+  if (currentSegIndex + 1 >= replaySegments.length) goLive();
+  else showReplaySegment(currentSegIndex + 1);
 });
-seekBar.addEventListener('change', () => {
-  const secondsAgo = seekBar.max - parseInt(seekBar.value, 10);
-  seekToSecondsAgo(secondsAgo);
-  isScrubbing = false;
+
+remoteVideo.addEventListener('ended', () => {
+  if (isLiveMode) return;
+  // Clip finished — automatically step forward to the next, more recent segment
+  if (currentSegIndex >= 0 && currentSegIndex < replaySegments.length - 1) showReplaySegment(currentSegIndex + 1);
+  else goLive();
 });
 
 /* ===== Start everything now that all elements/functions are ready ===== */
