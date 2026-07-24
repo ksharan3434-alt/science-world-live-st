@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1300, user-scalable=yes, maximum-scale=5.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Science World — Live Class</title>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -15,7 +15,11 @@
     --red:#e0332b; --red-dark:#a41f19; --yellow:#fff3b0; --yellow-line:#e8c93a;
   }
   *{box-sizing:border-box;}
-  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; position:relative; overflow-x:hidden; }
+
+  /* Forces every device to render the exact same desktop layout, then scales
+     the whole thing down/up with JS so it fills the real screen width. */
+  #dtScaleWrap{ width:1300px; position:absolute; top:0; left:0; transform-origin:0 0; }
 
   .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
   .logo-img{ height:32px; display:block; }
@@ -24,27 +28,12 @@
 
   .page{ max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
   .back-link{ color:var(--accent-dark); font-size:0.9rem; font-weight:600; margin-bottom:14px; }
-  .rotate-btn{ display:inline-flex; align-items:center; gap:8px; width:auto; margin-bottom:14px; padding:9px 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
-  .rotate-btn:active{ transform:translateY(2px); box-shadow:none; }
-  .rotate-btn .icon{ font-size:1rem; }
-
-  /* Forced landscape (CSS rotation trick) — works even where screen.orientation.lock() is blocked */
-  body.force-landscape{ overflow:hidden; }
-  body.force-landscape .player{
-    position:fixed !important; top:50% !important; left:50% !important;
-    width:100vh !important; height:100vw !important;
-    transform:translate(-50%,-50%) rotate(90deg) !important;
-    transform-origin:center center; margin:0 !important; border-radius:0 !important;
-    z-index:9999;
-  }
-  .exit-rotate-btn{ display:none; position:fixed; top:12px; right:12px; z-index:10000; width:34px; height:34px; border-radius:50%; background:rgba(0,0,0,0.6); color:#fff; border:none; font-size:1.1rem; cursor:pointer; align-items:center; justify-content:center; }
-  body.force-landscape .exit-rotate-btn{ display:flex; }
   .layout{ display:flex; gap:22px; align-items:flex-start; }
 
   .video-col{ flex:1 1 640px; min-width:0; }
   .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
-  .player:fullscreen, .player:-webkit-full-screen{ position:fixed; top:0; left:0; margin:0; aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
-  .player:fullscreen video, .player:-webkit-full-screen video{ object-fit:contain; }
+  .player:fullscreen, .player:-webkit-full-screen{ aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
+  .player:fullscreen video, .player:-webkit-full-screen video{ object-fit:cover; }
   video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
 
   .center-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.95rem; flex-direction:column; gap:12px; text-align:center; background:rgba(0,0,0,0.4); }
@@ -150,6 +139,8 @@
   </div>
 </div>
 
+<div id="dtScaleWrap">
+
 <div class="topbar">
   <img src="logo.png" alt="Science World" class="logo-img" id="logoImg" onerror="this.style.display='none';">
   <span class="logo-text">Science</span>
@@ -158,8 +149,6 @@
 
 <div class="page">
   <div class="back-link">← Back</div>
-  <button class="rotate-btn" id="rotateBtn"><span class="icon">🔄</span> Rotate to Landscape</button>
-  <button class="exit-rotate-btn" id="exitRotateBtn" title="Exit landscape">✕</button>
   <div class="layout">
 
     <div class="video-col">
@@ -237,6 +226,8 @@
     </div>
 
   </div>
+</div>
+
 </div>
 
 <script>
@@ -380,11 +371,14 @@ const iceConfig = {
 };
 
 function createDummyStream() {
+  // This dummy track is only used to open the call to the teacher — it's never
+  // played or heard. Made fully silent (no tone) and as light as possible.
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioCtx.createOscillator();
+  const silentSource = audioCtx.createConstantSource();
+  silentSource.offset.value = 0;
   const audioDst = audioCtx.createMediaStreamDestination();
-  oscillator.connect(audioDst);
-  oscillator.start();
+  silentSource.connect(audioDst);
+  silentSource.start();
   const audioTrack = audioDst.stream.getAudioTracks()[0];
   const canvas = document.createElement('canvas');
   canvas.width = 2; canvas.height = 2;
@@ -468,47 +462,6 @@ volSlider.addEventListener('input', () => {
   updateVolSliderFill(v);
   if (v > 0) remoteVideo.play().catch(() => {});
 });
-const rotateBtn = document.getElementById('rotateBtn');
-const exitRotateBtn = document.getElementById('exitRotateBtn');
-
-function applyForcedLandscape() {
-  document.body.classList.add('force-landscape');
-}
-function removeForcedLandscape() {
-  document.body.classList.remove('force-landscape');
-}
-
-rotateBtn.addEventListener('click', () => {
-  const tryCssFallback = () => applyForcedLandscape();
-
-  // Try the real (native) rotate first — best experience when the browser allows it.
-  const attemptNativeLock = () => {
-    if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock('landscape').catch(tryCssFallback);
-    } else {
-      tryCssFallback();
-    }
-  };
-
-  if (!document.fullscreenElement) {
-    player.requestFullscreen().then(attemptNativeLock).catch(tryCssFallback);
-  } else {
-    attemptNativeLock();
-  }
-});
-
-exitRotateBtn.addEventListener('click', () => {
-  removeForcedLandscape();
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-});
-
-// If the phone is actually turned to landscape naturally, drop the CSS trick so it doesn't double-rotate.
-window.addEventListener('resize', () => {
-  if (document.body.classList.contains('force-landscape') && window.matchMedia('(orientation: landscape)').matches) {
-    removeForcedLandscape();
-  }
-});
-
 fsBtn.addEventListener('click', () => {
   if (!document.fullscreenElement) {
     player.requestFullscreen().then(() => {
@@ -751,6 +704,35 @@ remoteVideo.addEventListener('ended', () => {
 
 /* ===== Start everything now that all elements/functions are ready ===== */
 if (studentName) startEverything();
+</script>
+
+<script>
+/* ===== Force-desktop scaling =====
+   The whole page is built at a fixed 1300px desktop width (#dtScaleWrap).
+   This scales that wrapper down (or up) with a CSS transform so it always
+   fills the real screen exactly, on every device — same layout as PC,
+   just proportionally resized. Re-runs on resize/rotate and whenever the
+   content's own height changes (chat messages, poll showing/hiding, etc). */
+(function () {
+  var DESIGN_WIDTH = 1300;
+  var wrap = document.getElementById('dtScaleWrap');
+
+  function applyScale() {
+    var scale = window.innerWidth / DESIGN_WIDTH;
+    wrap.style.transform = 'scale(' + scale + ')';
+    document.body.style.height = (wrap.offsetHeight * scale) + 'px';
+  }
+
+  applyScale();
+  window.addEventListener('resize', applyScale);
+  window.addEventListener('orientationchange', function () { setTimeout(applyScale, 250); });
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(applyScale).observe(wrap);
+  } else {
+    setInterval(applyScale, 1000);
+  }
+})();
 </script>
 </body>
 </html>
