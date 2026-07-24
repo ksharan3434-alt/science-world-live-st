@@ -507,27 +507,24 @@ function removeForcedLandscape() {
 }
 
 rotateBtn.addEventListener('click', () => {
-  const tryCssFallback = () => applyForcedLandscape();
-
-  // Try the real (native) rotate first — best experience when the browser allows it.
-  const attemptNativeLock = () => {
-    if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock('landscape').catch(tryCssFallback);
-    } else {
-      tryCssFallback();
-    }
-  };
-
-  if (!document.fullscreenElement) {
-    player.requestFullscreen().then(attemptNativeLock).catch(tryCssFallback);
-  } else {
-    attemptNativeLock();
+  // CSS-only rotation — deliberately NOT combined with the real Fullscreen API.
+  // Combining both caused a black-screen bug: when native orientation lock failed
+  // *after* fullscreen had already been entered, the rotated box sat on top of the
+  // browser's fullscreen backdrop (which defaults to solid black) and didn't cover
+  // it properly. Doing the CSS trick directly on the normal page avoids that entirely
+  // and works consistently across phones/browsers.
+  applyForcedLandscape();
+  window.scrollTo(0, 0);
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => {});
   }
 });
 
 exitRotateBtn.addEventListener('click', () => {
   removeForcedLandscape();
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (screen.orientation && screen.orientation.unlock) {
+    try { screen.orientation.unlock(); } catch (e) {}
+  }
 });
 
 // If the phone is actually turned to landscape naturally, drop the CSS trick so it doesn't double-rotate.
