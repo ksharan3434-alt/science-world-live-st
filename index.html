@@ -87,6 +87,15 @@
   .char-counter{ font-size:0.72rem; color:var(--muted); text-align:right; margin-top:6px; }
   .char-counter.limit{ color:var(--danger); font-weight:700; }
   .chat-blocked-note{ font-size:0.78rem; color:var(--danger); background:var(--danger-soft); padding:8px 10px; border-radius:8px; margin-bottom:8px; }
+  .chat-mention{ color:var(--accent-dark); font-weight:700; background:var(--accent-soft); padding:0 3px; border-radius:4px; }
+  .emoji-btn{ width:auto; padding:0 12px; background:var(--accent-soft); color:var(--accent-dark); font-size:1rem; border:none; border-radius:8px; cursor:pointer; flex:0 0 auto; }
+  .emoji-btn:disabled{ opacity:0.5; cursor:not-allowed; }
+  .emoji-popup{ display:none; flex-wrap:wrap; gap:6px; background:#fbfaf6; border:1.5px solid #d7d0bd; border-radius:10px; padding:8px; margin-bottom:8px; }
+  .emoji-popup.show{ display:flex; }
+  .emoji-opt{ width:auto; flex:0 0 auto; padding:4px 8px; font-size:1.15rem; background:transparent; border:none; border-radius:6px; cursor:pointer; }
+  .emoji-opt:hover{ background:var(--accent-soft); }
+  .reaction-tally{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .reaction-chip{ font-size:0.76rem; font-weight:700; background:var(--accent-soft); color:var(--accent-dark); padding:3px 9px; border-radius:20px; }
 
   /* Branding watermark (shows in normal view and fullscreen) */
   .branding-watermark{ position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.45); color:#fff; font-size:0.68rem; font-weight:700; padding:4px 9px; border-radius:6px; letter-spacing:0.02em; z-index:4; pointer-events:none; }
@@ -244,12 +253,15 @@
 
         <div class="chat-section">
           <div class="side-tab">💬 Chat</div>
+          <div class="reaction-tally" id="reactionTally"></div>
           <div class="chat-list" id="chatList">
             <div class="chat-empty" id="chatEmpty">No messages yet — you can chat here during the class.</div>
           </div>
-          <div class="chat-blocked-note" id="chatBlockedNote" style="display:none;">Your chat has been muted by the teacher.</div>
+          <div class="chat-blocked-note" id="chatBlockedNote" style="display:none;"></div>
+          <div class="emoji-popup" id="emojiPopup"></div>
           <div class="chat-input-row">
-            <input type="text" id="chatInput" placeholder="Type a message..." maxlength="50">
+            <input type="text" id="chatInput" placeholder="Type a message... (@ for mention)" maxlength="50">
+            <button type="button" class="emoji-btn" id="emojiToggleBtn">😀</button>
             <button id="chatSendBtn">Send</button>
           </div>
           <div class="char-counter" id="charCounter">0/50</div>
@@ -278,6 +290,7 @@ const db = firebase.firestore();
 function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function roomRef(){ return db.collection('rooms').doc(ROOM_ID); }
 function messagesRef(){ return roomRef().collection('messages'); }
+function reactionsRef(){ return roomRef().collection('reactions'); }
 function pollDocRef(){ return roomRef().collection('poll').doc('active'); }
 
 // Identity is saved in localStorage (not sessionStorage) so it survives a refresh
@@ -307,6 +320,8 @@ function startEverything() {
   listenPoll();
   registerStudent();
   listenBlockStatus();
+  listenRoomSettings();
+  listenReactions();
 }
 
 if (studentName) {
@@ -357,12 +372,46 @@ function registerStudent() {
 }
 
 let blockType = null;
+let roomChatEnabled = true;
+let roomReactionsEnabled = true;
+let roomPrivateChat = false;
 
-function setChatBlocked(isBlocked) {
-  chatInput.disabled = isBlocked;
-  chatSendBtn.disabled = isBlocked;
-  chatBlockedNote.style.display = isBlocked ? 'block' : 'none';
-  chatInput.placeholder = isBlocked ? 'Chat disabled' : 'Type a message...';
+/* Combines the personal chat-mute (from the "blocked" doc) with the
+   teacher's room-wide Chat/Reactions switches, and shows the right
+   reason to the student. */
+function updateChatInputState() {
+  const personalMute = blockType === 'chat' || blockType === 'full';
+  const disabled = personalMute || !roomChatEnabled;
+  chatInput.disabled = disabled;
+  chatSendBtn.disabled = disabled;
+  chatInput.placeholder = disabled ? 'Chat disabled' : 'Type a message... (@ for mention)';
+  if (personalMute) {
+    chatBlockedNote.textContent = 'Your chat has been muted by the teacher.';
+    chatBlockedNote.style.display = 'block';
+  } else if (!roomChatEnabled) {
+    chatBlockedNote.textContent = 'Chat is currently turned off by the teacher.';
+    chatBlockedNote.style.display = 'block';
+  } else {
+    chatBlockedNote.style.display = 'none';
+  }
+  const emojiDisabled = blockType === 'full' || !roomReactionsEnabled;
+  emojiToggleBtn.style.display = roomReactionsEnabled ? '' : 'none';
+  emojiToggleBtn.disabled = emojiDisabled;
+  if (emojiDisabled) emojiPopup.classList.remove('show');
+}
+
+/* Live room-wide settings the teacher controls from the panel:
+   chatEnabled / reactionsEnabled / privateChat. */
+function listenRoomSettings() {
+  roomRef().onSnapshot(doc => {
+    const d = doc.data() || {};
+    roomChatEnabled = d.chatEnabled !== false;       // default true
+    roomReactionsEnabled = d.reactionsEnabled !== false; // default true
+    const wasPrivate = roomPrivateChat;
+    roomPrivateChat = d.privateChat === true;         // default false
+    updateChatInputState();
+    if (wasPrivate !== roomPrivateChat) renderChatMessages(); // re-filter what's shown
+  });
 }
 
 function listenBlockStatus() {
@@ -370,14 +419,14 @@ function listenBlockStatus() {
     if (!doc.exists) {
       const wasFullyBlocked = blockType === 'full';
       blockType = null;
-      setChatBlocked(false);
+      updateChatInputState();
       blockedOverlay.classList.remove('show');
       if (wasFullyBlocked) attemptJoin(); // teacher unblocked us — reconnect to the live class
       return;
     }
     blockType = doc.data().type;
     if (blockType === 'full') {
-      setChatBlocked(true);
+      updateChatInputState();
       blockedOverlay.classList.add('show');
       notStartedOverlay.classList.remove('show');
       loaderIcon.style.display = 'none';
@@ -387,7 +436,7 @@ function listenBlockStatus() {
       stopReplayRecorder();
       if (peer) peer.destroy();
     } else if (blockType === 'chat') {
-      setChatBlocked(true);
+      updateChatInputState();
     }
   });
 }
@@ -567,13 +616,47 @@ qualityMenu.querySelectorAll('.quality-opt').forEach(opt => {
   });
 });
 
-/* ===== Chat ===== */
+/* ===== Chat, Mentions & Reactions =====
+   Messages now carry studentId (the same clientId used for presence/block),
+   so the teacher panel's private-chat mode and end-of-stream analytics can
+   attribute messages/reactions correctly. */
 const chatList = document.getElementById('chatList');
 const chatEmpty = document.getElementById('chatEmpty');
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
 const chatBlockedNote = document.getElementById('chatBlockedNote');
 const charCounter = document.getElementById('charCounter');
+const emojiToggleBtn = document.getElementById('emojiToggleBtn');
+const emojiPopup = document.getElementById('emojiPopup');
+const reactionTally = document.getElementById('reactionTally');
+
+const REACTION_EMOJIS = ['👍','❤️','😂','😮','👏','🎉','🤔','🔥'];
+emojiPopup.innerHTML = REACTION_EMOJIS.map(e => '<button type="button" class="emoji-opt" data-e="' + e + '">' + e + '</button>').join('');
+emojiPopup.querySelectorAll('.emoji-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    reactionsRef().add({ name: studentName, studentId: clientId, emoji: btn.dataset.e, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
+    emojiPopup.classList.remove('show');
+  });
+});
+emojiToggleBtn.addEventListener('click', () => { if (!emojiToggleBtn.disabled) emojiPopup.classList.toggle('show'); });
+
+function listenReactions() {
+  reactionsRef().orderBy('ts', 'asc').limitToLast(500).onSnapshot(snap => {
+    const totals = {};
+    snap.forEach(doc => {
+      const r = doc.data();
+      totals[r.emoji] = (totals[r.emoji] || 0) + 1;
+    });
+    reactionTally.innerHTML = Object.entries(totals).map(([e, c]) => '<span class="reaction-chip">' + e + ' ' + c + '</span>').join('');
+  });
+}
+
+/* Renders @Name as a highlighted mention span; text is escaped first so
+   this can't inject markup. */
+function renderMsgText(text) {
+  const escaped = escapeHtml(text || '');
+  return escaped.replace(/@([A-Za-z0-9_ .]{1,20}?)(?=[\s.,!?]|$)/g, '<span class="chat-mention">@$1</span>');
+}
 
 chatInput.addEventListener('input', () => {
   const len = chatInput.value.length;
@@ -581,26 +664,42 @@ chatInput.addEventListener('input', () => {
   charCounter.classList.toggle('limit', len >= 50);
 });
 
+let lastChatSnap = null;
+
+/* Re-renders from the last snapshot — used both by listenChat itself and
+   whenever the teacher flips Private Chat on/off, so the view updates
+   immediately without waiting for a new message. */
+function renderChatMessages() {
+  if (!lastChatSnap) return;
+  chatList.innerHTML = '';
+  const docs = [];
+  lastChatSnap.forEach(doc => docs.push(doc.data()));
+  const visible = roomPrivateChat
+    ? docs.filter(m => m.isAdmin || m.studentId === clientId)
+    : docs;
+  if (!visible.length) { chatList.appendChild(chatEmpty); return; }
+  visible.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'chat-msg' + (m.isAdmin ? ' admin' : '');
+    div.innerHTML = '<span class="chat-name">' + escapeHtml(m.name || 'Student') + '</span>' + renderMsgText(m.text);
+    chatList.appendChild(div);
+  });
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
 function listenChat() {
   messagesRef().orderBy('ts', 'asc').limitToLast(150).onSnapshot(snap => {
-    chatList.innerHTML = '';
-    if (snap.empty) { chatList.appendChild(chatEmpty); return; }
-    snap.forEach(doc => {
-      const m = doc.data();
-      const div = document.createElement('div');
-      div.className = 'chat-msg' + (m.isAdmin ? ' admin' : '');
-      div.innerHTML = '<span class="chat-name">' + escapeHtml(m.name || 'Student') + '</span>' + escapeHtml(m.text || '');
-      chatList.appendChild(div);
-    });
-    chatList.scrollTop = chatList.scrollHeight;
+    lastChatSnap = snap;
+    renderChatMessages();
   });
 }
 
 function sendStudentMsg() {
-  if (blockType) return; // chat-muted or fully blocked — can't send
+  if (blockType || !roomChatEnabled) return; // chat-muted, fully blocked, or teacher turned chat off
   const text = chatInput.value.trim().slice(0, 50);
   if (!text) return;
-  messagesRef().add({ name: studentName, text, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
+  const mentions = Array.from(text.matchAll(/@([A-Za-z0-9_ .]{1,20})/g)).map(m => m[1].trim());
+  messagesRef().add({ name: studentName, studentId: clientId, text, mentions, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
   chatInput.value = '';
   charCounter.textContent = '0/50';
   charCounter.classList.remove('limit');
