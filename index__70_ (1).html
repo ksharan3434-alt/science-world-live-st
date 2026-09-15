@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes, maximum-scale=5.0">
+<title>Science World — Live Class</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --ink:#20302c; --bg:#f3efe4; --panel:#ffffff;
+    --accent:#2f6f5e; --accent-dark:#204d41; --accent-soft:#e2ede7;
+    --danger:#a4402f; --danger-soft:#f6e5e0; --muted:#6b7a75;
+    --red:#e0332b; --red-dark:#a41f19; --yellow:#fff3b0; --yellow-line:#e8c93a;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; font-family:'Segoe UI','Noto Sans Devanagari',Arial,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+
+  .topbar{ background:#0e1614; padding:14px 24px; display:flex; align-items:center; gap:10px; }
+  .logo-img{ height:32px; display:block; }
+  .logo-text{ color:#fff; font-weight:700; font-size:1.15rem; }
+  .logo-badge{ background:var(--red); color:#fff; font-weight:800; font-size:0.82rem; padding:4px 9px; border-radius:5px; box-shadow:0 2px 0 var(--red-dark); }
+
+  .page{ max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
+  .back-link{ color:var(--accent-dark); font-size:0.9rem; font-weight:600; margin-bottom:14px; }
+  .rotate-btn{ display:inline-flex; align-items:center; gap:8px; width:auto; margin-bottom:14px; padding:9px 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
+  .rotate-btn:active{ transform:translateY(2px); box-shadow:none; }
+  .rotate-btn .icon{ font-size:1rem; }
+
+  /* Forced landscape (CSS rotation trick) — works even where screen.orientation.lock() is blocked */
+  body.force-landscape{ overflow:hidden; }
+  body.force-landscape .player{
+    position:fixed !important; top:50% !important; left:50% !important;
+    width:100vh !important; height:100vw !important;
+    transform:translate(-50%,-50%) rotate(90deg) !important;
+    transform-origin:center center; margin:0 !important; border-radius:0 !important;
+    z-index:9999;
+  }
+  .exit-rotate-btn{ display:none; position:fixed; top:12px; right:12px; z-index:10000; width:34px; height:34px; border-radius:50%; background:rgba(0,0,0,0.6); color:#fff; border:none; font-size:1.1rem; cursor:pointer; align-items:center; justify-content:center; }
+  body.force-landscape .exit-rotate-btn{ display:flex; }
+  .layout{ display:flex; gap:22px; align-items:flex-start; }
+
+  .video-col{ flex:1 1 640px; min-width:0; }
+  .player{ position:relative; background:#000; border-radius:10px; overflow:hidden; aspect-ratio:16/9; box-shadow:0 12px 30px -16px rgba(0,0,0,0.5); }
+  .player:fullscreen, .player:-webkit-full-screen{ position:fixed; top:0; left:0; margin:0; aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
+  .player:fullscreen video, .player:-webkit-full-screen video{ object-fit:contain; }
+  video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+
+  .center-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.95rem; flex-direction:column; gap:12px; text-align:center; background:rgba(0,0,0,0.4); }
+  .spinner{ width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:#fff; animation:spin 0.8s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .controls-bar{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); padding:26px 14px 10px; display:flex; align-items:center; gap:14px; }
+  .ctrl-btn{ background:none; border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:6px; font-size:1.1rem; padding:0; }
+  .ctrl-btn:hover{ background:rgba(255,255,255,0.15); }
+  .live-pill{ display:flex; align-items:center; gap:6px; background:var(--red); color:#fff; font-weight:700; font-size:0.72rem; padding:4px 10px; border-radius:20px; letter-spacing:0.04em; }
+  .live-pill .dot{ width:6px;height:6px;border-radius:50%; background:#fff; animation:pulse 1.3s infinite; }
+  @keyframes pulse{ 0%{opacity:1;} 50%{opacity:0.3;} 100%{opacity:1;} }
+  .elapsed{ color:#e5e2d6; font-size:0.8rem; font-variant-numeric:tabular-nums; }
+  .spacer{ flex:1; }
+
+  .below-video{ margin-top:14px; background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px 18px; font-size:0.85rem; color:var(--muted); }
+
+  .notstarted{ position:absolute; inset:0; background:#0e1614; color:var(--bg); display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; z-index:5; }
+  .notstarted.show{ display:flex; }
+  .notstarted-icon{ font-size:2.6rem; margin-bottom:14px; }
+  .notstarted-title{ font-size:1.3rem; font-weight:800; margin:0 0 8px; }
+  .notstarted-sub{ font-size:0.85rem; color:#b8c4bf; max-width:360px; margin:0 0 20px; line-height:1.55; }
+  .notstarted button{ width:auto; padding:10px 22px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; box-shadow:0 3px 0 var(--accent-dark); }
+
+  .side-col{ flex:0 0 340px; }
+  .side-box{ background:var(--panel); border:1.5px solid #ded6c2; border-radius:12px; padding:16px; margin-bottom:14px; }
+  .side-tab{ font-weight:700; font-size:0.9rem; color:var(--accent-dark); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+
+  /* Chat */
+  .chat-list{ height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; padding-right:4px; }
+  .chat-empty{ color:var(--muted); font-size:0.82rem; text-align:center; padding:30px 10px; }
+  .chat-msg{ background:var(--accent-soft); border-radius:8px; padding:8px 11px; font-size:0.83rem; line-height:1.4; overflow-wrap:anywhere; word-break:break-word; }
+  .chat-msg.admin{ background:var(--yellow); border:1px solid var(--yellow-line); }
+  .chat-name{ font-weight:700; color:var(--accent-dark); margin-right:6px; }
+  .chat-input-row{ display:flex; gap:8px; }
+  .chat-input-row input{ flex:1; padding:11px 12px; border:1.5px solid #d7d0bd; border-radius:8px; font-size:0.85rem; background:#fbfaf6; }
+  .chat-input-row input:disabled{ opacity:0.6; }
+  .chat-input-row button{ width:auto; padding:0 16px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; }
+  .chat-input-row button:disabled{ opacity:0.5; cursor:not-allowed; }
+  .char-counter{ font-size:0.72rem; color:var(--muted); text-align:right; margin-top:6px; }
+  .char-counter.limit{ color:var(--danger); font-weight:700; }
+  .chat-blocked-note{ font-size:0.78rem; color:var(--danger); background:var(--danger-soft); padding:8px 10px; border-radius:8px; margin-bottom:8px; }
+  .chat-mention{ color:var(--accent-dark); font-weight:700; background:var(--accent-soft); padding:0 3px; border-radius:4px; }
+  .emoji-btn{ width:auto; padding:0 12px; background:var(--accent-soft); color:var(--accent-dark); font-size:1rem; border:none; border-radius:8px; cursor:pointer; flex:0 0 auto; }
+  .emoji-btn:disabled{ opacity:0.5; cursor:not-allowed; }
+  .emoji-popup{ display:none; flex-wrap:wrap; gap:6px; background:#fbfaf6; border:1.5px solid #d7d0bd; border-radius:10px; padding:8px; margin-bottom:8px; }
+  .emoji-popup.show{ display:flex; }
+  .emoji-opt{ width:auto; flex:0 0 auto; padding:4px 8px; font-size:1.15rem; background:transparent; border:none; border-radius:6px; cursor:pointer; }
+  .emoji-opt:hover{ background:var(--accent-soft); }
+  .reaction-tally{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .reaction-chip{ font-size:0.76rem; font-weight:700; background:var(--accent-soft); color:var(--accent-dark); padding:3px 9px; border-radius:20px; }
+
+  /* Branding watermark (shows in normal view and fullscreen) */
+  .branding-watermark{ position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.45); color:#fff; font-size:0.68rem; font-weight:700; padding:4px 9px; border-radius:6px; letter-spacing:0.02em; z-index:4; pointer-events:none; }
+
+  /* Replay nav overlay — appears above the controls bar only in replay mode */
+  .replay-nav{ position:absolute; left:0; right:0; bottom:44px; padding:0 14px; display:flex; align-items:center; justify-content:center; gap:10px; z-index:6; }
+  .replay-nav .s-btn{ width:auto; padding:6px 12px; font-size:0.76rem; border-radius:6px; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.25); color:#fff; font-weight:600; cursor:pointer; }
+  .replay-nav .s-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+  .replay-nav-label{ color:#fff; font-size:0.74rem; background:rgba(0,0,0,0.55); padding:5px 10px; border-radius:6px; font-weight:600; }
+
+  /* Volume slider — filled portion (current level) red, rest white; background set via JS */
+  .vol-slider{ width:64px; -webkit-appearance:none; appearance:none; height:5px; border-radius:3px; outline:none; cursor:pointer; margin:0; background:linear-gradient(to right, var(--red) 100%, #fff 100%); }
+  .vol-slider::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid var(--red); cursor:pointer; margin-top:-3.5px; }
+  .vol-slider::-moz-range-thumb{ width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid var(--red); cursor:pointer; }
+  .vol-slider::-webkit-slider-runnable-track{ height:5px; border-radius:3px; background:transparent; }
+  .vol-slider::-moz-range-track{ height:5px; border-radius:3px; background:transparent; }
+
+  #replayToggleBtn.active{ background:var(--red); }
+
+  /* Quality gear menu (data-saver control) */
+  .quality-wrap{ position:relative; }
+  .quality-menu{ display:none; position:absolute; bottom:42px; right:0; background:#1a2422; border-radius:8px; padding:6px; min-width:170px; box-shadow:0 8px 24px rgba(0,0,0,0.4); z-index:10; }
+  .quality-menu.show{ display:block; }
+  .quality-opt{ padding:9px 12px; font-size:0.8rem; color:#e5e2d6; border-radius:6px; cursor:pointer; white-space:nowrap; }
+  .quality-opt:hover, .quality-opt.active{ background:var(--accent); color:#fff; }
+
+  /* Poll (nested inside the combined poll+chat block) */
+  .combo-box{ display:flex; flex-direction:column; }
+  .poll-box{ display:none; }
+  .poll-box.show{ display:block; padding-bottom:16px; margin-bottom:16px; border-bottom:1.5px solid #ded6c2; }
+  .poll-question{ font-weight:700; margin-bottom:10px; font-size:0.92rem; }
+  .poll-opt-btn{ width:100%; text-align:left; padding:11px 13px; margin-bottom:8px; border-radius:8px; border:1.5px solid #d7d0bd; background:#fbfaf6; color:var(--ink); font-size:0.85rem; cursor:pointer; }
+  .poll-opt-btn:hover{ border-color:var(--accent); background:var(--accent-soft); }
+  .poll-status{ font-size:0.82rem; color:var(--accent-dark); font-weight:600; margin-top:6px; }
+  .poll-bar-row{ margin-bottom:10px; }
+  .poll-bar-label{ font-size:0.8rem; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .poll-bar-track{ background:var(--accent-soft); border-radius:6px; height:10px; overflow:hidden; }
+  .poll-bar-fill{ background:var(--accent); height:100%; border-radius:6px; }
+
+  /* Name modal */
+  .name-modal{ position:fixed; inset:0; background:#0e1614; z-index:999; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .name-card{ background:var(--panel); border-radius:16px; padding:32px; width:100%; max-width:400px; text-align:center; }
+  .name-card .badge{ font-size:2rem; margin-bottom:10px; }
+  .name-title{ font-size:1.15rem; font-weight:700; margin-bottom:6px; }
+  .name-sub{ font-size:0.85rem; color:var(--muted); margin-bottom:20px; }
+  .name-card label{ display:block; text-align:left; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); font-weight:600; margin-bottom:6px; }
+  .name-card input{ width:100%; padding:13px 14px; font-size:1rem; border:1.5px solid #d7d0bd; border-radius:10px; background:#fbfaf6; margin-bottom:16px; }
+  .name-card button{ width:100%; padding:14px; font-size:0.95rem; font-weight:700; border:none; border-radius:10px; background:var(--accent); color:#fff; box-shadow:0 3px 0 var(--accent-dark); cursor:pointer; }
+
+  /* ===== Mobile layout — YouTube-style: full-width video on top, chat/poll stacked right below ===== */
+  @media (max-width: 860px){
+    .topbar{ padding:12px 14px; }
+    .logo-img{ height:26px; }
+    .logo-text{ font-size:1rem; }
+
+    .page{ padding:0 0 30px; max-width:100%; }
+    .back-link{ padding:10px 14px 0; margin-bottom:8px; }
+    .rotate-btn{ margin:0 14px 10px; }
+
+    .layout{ flex-direction:column; gap:0; }
+
+    .video-col{ flex:1 1 auto; width:100%; min-width:0; }
+    .player{ border-radius:0; aspect-ratio:16/9; }
+    .below-video{ margin:0; border-left:none; border-right:none; border-radius:0; }
+
+    .side-col{ flex:1 1 auto; width:100%; margin-top:0; }
+    .side-box{ border-left:none; border-right:none; border-radius:0; margin-bottom:0; border-top:none; }
+    .chat-list{ height:min(50vh,340px); }
+  }
+</style>
+</head>
+<body>
+
+<div class="name-modal" id="nameModal">
+  <div class="name-card">
+    <div class="badge">🎓</div>
+    <div class="name-title">Before Joining the Class</div>
+    <p class="name-sub">Enter your name so the teacher and other students can recognize you</p>
+    <label>Your Name</label>
+    <input type="text" id="studentNameInput" placeholder="e.g. Rahul Kumar">
+    <button id="nameSubmitBtn">Join Class</button>
+  </div>
+</div>
+
+<div class="topbar">
+  <img src="logo.png" alt="Science World" class="logo-img" id="logoImg" onerror="this.style.display='none';">
+  <span class="logo-text">Science</span>
+  <span class="logo-badge">World</span>
+</div>
+
+<div class="page">
+  <div class="back-link">← Back</div>
+  <button class="rotate-btn" id="rotateBtn"><span class="icon">🔄</span> Rotate to Landscape</button>
+  <button class="exit-rotate-btn" id="exitRotateBtn" title="Exit landscape">✕</button>
+  <div class="layout">
+
+    <div class="video-col">
+      <div class="player" id="player">
+        <video id="remoteVideo" autoplay playsinline muted></video>
+        <div id="ytPlayerHolder" style="display:none; position:absolute; inset:0; background:#000;">
+          <div id="ytPlayerEl" style="width:100%; height:100%;"></div>
+        </div>
+        <div class="branding-watermark">🔬 Science World</div>
+        <div class="center-icon" id="loaderIcon">
+          <div class="spinner"></div>
+          <span>Connecting to class...</span>
+        </div>
+        <div class="notstarted" id="notStartedOverlay">
+          <div class="notstarted-icon">🕒</div>
+          <div class="notstarted-title">Class Hasn't Started Yet</div>
+          <p class="notstarted-sub">Please wait for the teacher to start the class. It will connect automatically as soon as the teacher goes live.</p>
+          <button id="retryBtn">Try Again</button>
+        </div>
+        <div class="notstarted" id="blockedOverlay" style="background:#3a1611;">
+          <div class="notstarted-icon">⛔</div>
+          <div class="notstarted-title">You've Been Removed From This Class</div>
+          <p class="notstarted-sub">The teacher has blocked you from this live class. If you think this is a mistake, please talk to your teacher.</p>
+        </div>
+
+        <div class="replay-nav" id="replayNav" style="display:none;">
+          <button class="s-btn" id="replayPrevBtn">⏮ -10s</button>
+          <span class="replay-nav-label" id="replayNavLabel">Replay</span>
+          <button class="s-btn" id="replayNextBtn">+10s ⏭</button>
+        </div>
+
+        <div class="controls-bar" id="controlsBar" style="display:none;">
+          <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause">⏸</button>
+          <button class="ctrl-btn" id="volBtn" title="Mute/Unmute">🔇</button>
+          <input type="range" id="volSlider" class="vol-slider" min="0" max="100" value="100" title="Volume">
+          <div class="live-pill" id="livePill"><span class="dot"></span> LIVE</div>
+          <span class="elapsed" id="elapsedTime">00:00</span>
+          <div class="spacer"></div>
+          <button class="ctrl-btn" id="replayToggleBtn" title="Watch last 1 minute">⏪</button>
+          <div class="quality-wrap">
+            <button class="ctrl-btn" id="qualityBtn" title="Playback Quality">⚙</button>
+            <div class="quality-menu" id="qualityMenu">
+              <div class="quality-opt active" data-q="auto">Auto</div>
+              <div class="quality-opt" data-q="high">High</div>
+              <div class="quality-opt" data-q="medium">Medium (Data Saver)</div>
+              <div class="quality-opt" data-q="low">Low (Data Saver)</div>
+            </div>
+          </div>
+          <button class="ctrl-btn" id="fsBtn" title="Fullscreen">⛶</button>
+        </div>
+      </div>
+      <div class="below-video" id="statusLine">Welcome to the Science World live class.</div>
+    </div>
+
+    <div class="side-col">
+      <div class="side-box combo-box">
+        <div class="poll-box" id="pollBox">
+          <div class="side-tab">📊 Poll</div>
+          <div class="poll-question" id="pollQuestionEl"></div>
+          <div id="pollOptionsEl"></div>
+          <div id="pollResultsArea"></div>
+          <div class="poll-status" id="pollStatusEl"></div>
+        </div>
+
+        <div class="chat-section">
+          <div class="side-tab">💬 Chat</div>
+          <div class="reaction-tally" id="reactionTally"></div>
+          <div class="chat-list" id="chatList">
+            <div class="chat-empty" id="chatEmpty">No messages yet — you can chat here during the class.</div>
+          </div>
+          <div class="chat-blocked-note" id="chatBlockedNote" style="display:none;"></div>
+          <div class="emoji-popup" id="emojiPopup"></div>
+          <div class="chat-input-row">
+            <input type="text" id="chatInput" placeholder="Type a message... (@ for mention)" maxlength="50">
+            <button type="button" class="emoji-btn" id="emojiToggleBtn">😀</button>
+            <button id="chatSendBtn">Send</button>
+          </div>
+          <div class="char-counter" id="charCounter">0/50</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const ROOM_ID = "myclass01";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCw4k_h4QHEDOK77DFzRod96rG0MNAKBqE",
+  authDomain: "liveee-9dce9.firebaseapp.com",
+  projectId: "liveee-9dce9",
+  storageBucket: "liveee-9dce9.firebasestorage.app",
+  messagingSenderId: "652809982147",
+  appId: "1:652809982147:web:239082a8816d3334179276",
+  measurementId: "G-M9HG78N0B8"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function roomRef(){ return db.collection('rooms').doc(ROOM_ID); }
+function messagesRef(){ return roomRef().collection('messages'); }
+function reactionsRef(){ return roomRef().collection('reactions'); }
+function pollDocRef(){ return roomRef().collection('poll').doc('active'); }
+
+// Identity is saved in localStorage (not sessionStorage) so it survives a refresh
+// or closing the tab — a student can't just reload and rejoin under a new name.
+let clientId = localStorage.getItem('sw_client_id');
+if (!clientId) { clientId = 'stu_' + Math.random().toString(36).slice(2, 10); localStorage.setItem('sw_client_id', clientId); }
+let studentName = localStorage.getItem('sw_student_name') || '';
+
+const nameModal = document.getElementById('nameModal');
+const studentNameInput = document.getElementById('studentNameInput');
+const nameSubmitBtn = document.getElementById('nameSubmitBtn');
+
+function submitName() {
+  const val = studentNameInput.value.trim();
+  if (!val) { studentNameInput.focus(); return; }
+  studentName = val;
+  localStorage.setItem('sw_student_name', val);
+  nameModal.style.display = 'none';
+  startEverything();
+}
+nameSubmitBtn.addEventListener('click', submitName);
+studentNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitName(); });
+
+function startEverything() {
+  attemptJoin();
+  listenChat();
+  listenPoll();
+  registerStudent();
+  listenBlockStatus();
+  listenRoomSettings();
+  listenReactions();
+}
+
+if (studentName) {
+  // Returning student on this device/browser — skip the name prompt entirely.
+  nameModal.style.display = 'none';
+}
+
+/* ===== WebRTC ===== */
+let peer = null;
+let startTime = null;
+let elapsedInterval = null;
+
+const remoteVideo = document.getElementById('remoteVideo');
+const loaderIcon = document.getElementById('loaderIcon');
+const notStartedOverlay = document.getElementById('notStartedOverlay');
+const blockedOverlay = document.getElementById('blockedOverlay');
+const retryBtn = document.getElementById('retryBtn');
+const controlsBar = document.getElementById('controlsBar');
+const playPauseBtn = document.getElementById('playPauseBtn');
+const volBtn = document.getElementById('volBtn');
+const volSlider = document.getElementById('volSlider');
+const fsBtn = document.getElementById('fsBtn');
+const elapsedTime = document.getElementById('elapsedTime');
+const statusLine = document.getElementById('statusLine');
+const player = document.getElementById('player');
+const replayNav = document.getElementById('replayNav');
+const replayPrevBtn = document.getElementById('replayPrevBtn');
+const replayNextBtn = document.getElementById('replayNextBtn');
+const replayNavLabel = document.getElementById('replayNavLabel');
+const replayToggleBtn = document.getElementById('replayToggleBtn');
+const livePill = document.getElementById('livePill');
+const qualityBtn = document.getElementById('qualityBtn');
+const qualityMenu = document.getElementById('qualityMenu');
+const qualityWrap = qualityBtn.closest('.quality-wrap');
+const ytPlayerHolder = document.getElementById('ytPlayerHolder');
+
+/* ===== YouTube-link broadcast mode (no own streaming server needed) =====
+   The teacher panel can, instead of (or as well as) broadcasting camera/screen
+   over WebRTC, just paste a YouTube link. That gets written to the room's
+   Firestore doc as `youtube: {videoId, isPlaying, time, updatedAt}` and every
+   student renders that video via the official YouTube IFrame Player, roughly
+   synced to the teacher's position. */
+let isYoutubeMode = false;
+let ytPlayer = null;
+let ytReady = false;
+let ytApiReady = false;
+let currentYtVideoId = null;
+let pendingYtStart = null; // {videoId, seekTime, playing} queued until the IFrame API script has loaded
+
+window.onYouTubeIframeAPIReady = function() {
+  ytApiReady = true;
+  if (pendingYtStart) { const p = pendingYtStart; pendingYtStart = null; createYtPlayer(p.videoId, p.seekTime, p.playing); }
+};
+
+function createYtPlayer(videoId, seekTime, playing) {
+  if (!ytApiReady || typeof YT === 'undefined' || !YT.Player) { pendingYtStart = { videoId, seekTime, playing }; return; }
+  ytReady = false;
+  ytPlayer = new YT.Player('ytPlayerEl', {
+    videoId: videoId,
+    playerVars: { autoplay: 1, controls: 0, rel: 0, playsinline: 1, modestbranding: 1 },
+    events: {
+      onReady: (e) => {
+        ytReady = true;
+        e.target.mute(); // matches the app's default-muted behaviour, same as remoteVideo
+        volBtn.textContent = '🔇'; volSlider.value = 0; updateVolSliderFill(0);
+        if (seekTime > 0) e.target.seekTo(seekTime, true);
+        if (playing) e.target.playVideo(); else e.target.pauseVideo();
+        playPauseBtn.textContent = playing ? '⏸' : '▶';
+      }
+    }
+  });
+}
+
+function enterYoutubeMode(videoId, seekTime, playing) {
+  isYoutubeMode = true;
+  currentYtVideoId = videoId;
+  if (peer) { try { peer.destroy(); } catch (e) {} peer = null; } // stop hunting for a camera broadcast
+  hideNotStarted();
+  loaderIcon.style.display = 'none';
+  replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active');
+  stopReplayRecorder();
+  qualityWrap.style.display = 'none';
+  replayToggleBtn.style.display = 'none';
+  remoteVideo.style.display = 'none';
+  ytPlayerHolder.style.display = 'block';
+  controlsBar.style.display = 'flex';
+  statusLine.textContent = 'You are watching a video the teacher shared.';
+  startElapsedTimer();
+  createYtPlayer(videoId, seekTime, playing);
+}
+
+function exitYoutubeMode() {
+  isYoutubeMode = false;
+  currentYtVideoId = null;
+  if (ytPlayer && ytPlayer.destroy) { try { ytPlayer.destroy(); } catch (e) {} }
+  ytPlayer = null; ytReady = false;
+  ytPlayerHolder.style.display = 'none';
+  remoteVideo.style.display = '';
+  qualityWrap.style.display = '';
+  replayToggleBtn.style.display = '';
+  stopElapsedTimer();
+  if (peer) peer.destroy();
+  attemptJoin(); // fall back to checking for a normal camera/screen broadcast
+}
+
+/* ===== Presence (so the teacher can see & block this student) ===== */
+function studentDocRef(){ return roomRef().collection('students').doc(clientId); }
+function myBlockedRef(){ return roomRef().collection('blocked').doc(clientId); }
+
+function registerStudent() {
+  studentDocRef().set({
+    name: studentName,
+    joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    lastActive: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  setInterval(() => {
+    studentDocRef().set({ lastActive: firebase.firestore.FieldValue.serverTimestamp(), name: studentName }, { merge: true });
+  }, 15000);
+}
+
+let blockType = null;
+let roomChatEnabled = true;
+let roomReactionsEnabled = true;
+let roomPrivateChat = false;
+
+/* Combines the personal chat-mute (from the "blocked" doc) with the
+   teacher's room-wide Chat/Reactions switches, and shows the right
+   reason to the student. */
+function updateChatInputState() {
+  const personalMute = blockType === 'chat' || blockType === 'full';
+  const disabled = personalMute || !roomChatEnabled;
+  chatInput.disabled = disabled;
+  chatSendBtn.disabled = disabled;
+  chatInput.placeholder = disabled ? 'Chat disabled' : 'Type a message... (@ for mention)';
+  if (personalMute) {
+    chatBlockedNote.textContent = 'Your chat has been muted by the teacher.';
+    chatBlockedNote.style.display = 'block';
+  } else if (!roomChatEnabled) {
+    chatBlockedNote.textContent = 'Chat is currently turned off by the teacher.';
+    chatBlockedNote.style.display = 'block';
+  } else {
+    chatBlockedNote.style.display = 'none';
+  }
+  const emojiDisabled = blockType === 'full' || !roomReactionsEnabled;
+  emojiToggleBtn.style.display = roomReactionsEnabled ? '' : 'none';
+  emojiToggleBtn.disabled = emojiDisabled;
+  if (emojiDisabled) emojiPopup.classList.remove('show');
+}
+
+/* Live room-wide settings the teacher controls from the panel:
+   chatEnabled / reactionsEnabled / privateChat. */
+function listenRoomSettings() {
+  roomRef().onSnapshot(doc => {
+    const d = doc.data() || {};
+    roomChatEnabled = d.chatEnabled !== false;       // default true
+    roomReactionsEnabled = d.reactionsEnabled !== false; // default true
+    const wasPrivate = roomPrivateChat;
+    roomPrivateChat = d.privateChat === true;         // default false
+    updateChatInputState();
+    if (wasPrivate !== roomPrivateChat) renderChatMessages(); // re-filter what's shown
+
+    const yt = d.youtube;
+    if (yt && yt.videoId) {
+      const elapsedSincePush = yt.updatedAt ? (Date.now() - yt.updatedAt.toMillis()) / 1000 : 0;
+      const expectedTime = (yt.time || 0) + (yt.isPlaying ? Math.max(0, elapsedSincePush) : 0);
+      if (!isYoutubeMode || currentYtVideoId !== yt.videoId) {
+        enterYoutubeMode(yt.videoId, expectedTime, yt.isPlaying !== false);
+      } else if (ytReady && ytPlayer) {
+        // Only nudge the time when the student's own player is already playing —
+        // a student who paused locally shouldn't get forced back into sync.
+        if (ytPlayer.getPlayerState() === 1 && Math.abs(ytPlayer.getCurrentTime() - expectedTime) > 5) {
+          ytPlayer.seekTo(expectedTime, true);
+        }
+      }
+    } else if (isYoutubeMode) {
+      exitYoutubeMode();
+    }
+  });
+}
+
+function listenBlockStatus() {
+  myBlockedRef().onSnapshot(doc => {
+    if (!doc.exists) {
+      const wasFullyBlocked = blockType === 'full';
+      blockType = null;
+      updateChatInputState();
+      blockedOverlay.classList.remove('show');
+      if (wasFullyBlocked) attemptJoin(); // teacher unblocked us — reconnect to the live class
+      return;
+    }
+    blockType = doc.data().type;
+    if (blockType === 'full') {
+      updateChatInputState();
+      blockedOverlay.classList.add('show');
+      notStartedOverlay.classList.remove('show');
+      loaderIcon.style.display = 'none';
+      controlsBar.style.display = 'none';
+      replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active');
+      stopElapsedTimer();
+      stopReplayRecorder();
+      if (peer) peer.destroy();
+    } else if (blockType === 'chat') {
+      updateChatInputState();
+    }
+  });
+}
+
+const iceConfig = {
+  iceServers: [
+    { urls: "stun:stun.relay.metered.ca:80" },
+    { urls: "turn:global.relay.metered.ca:80", username: "398918334c99a4f629ac9e60", credential: "d6o4Pj8ZG6RlTytA" },
+    { urls: "turn:global.relay.metered.ca:443", username: "398918334c99a4f629ac9e60", credential: "d6o4Pj8ZG6RlTytA" }
+  ]
+};
+
+function createDummyStream() {
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const oscillator = audioCtx.createOscillator();
+  const audioDst = audioCtx.createMediaStreamDestination();
+  oscillator.connect(audioDst);
+  oscillator.start();
+  const audioTrack = audioDst.stream.getAudioTracks()[0];
+  const canvas = document.createElement('canvas');
+  canvas.width = 2; canvas.height = 2;
+  canvas.getContext('2d').fillRect(0, 0, 2, 2);
+  const videoTrack = canvas.captureStream(1).getVideoTracks()[0];
+  return new MediaStream([audioTrack, videoTrack]);
+}
+
+function pad(n){ return n < 10 ? '0' + n : '' + n; }
+function startElapsedTimer(){ startTime = Date.now(); elapsedInterval = setInterval(() => { const secs = Math.floor((Date.now() - startTime)/1000); elapsedTime.textContent = pad(Math.floor(secs/60)) + ':' + pad(secs%60); }, 1000); }
+function stopElapsedTimer(){ if (elapsedInterval) clearInterval(elapsedInterval); }
+
+function showNotStarted(){ if (isYoutubeMode) return; loaderIcon.style.display='none'; controlsBar.style.display='none'; replayNav.style.display='none'; replayToggleBtn.classList.remove('active'); notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
+function hideNotStarted(){ notStartedOverlay.classList.remove('show'); }
+
+function attemptJoin() {
+  if (blockType === 'full') return; // teacher has removed this student from the class
+  if (isYoutubeMode) return; // a YouTube broadcast is active — don't fight it with the camera-search UI
+
+  hideNotStarted();
+  loaderIcon.style.display = 'flex';
+  controlsBar.style.display = 'none';
+
+  peer = new Peer(undefined, { debug: 1, config: iceConfig });
+
+  peer.on('open', () => {
+    if (isYoutubeMode) return;
+    const dummyStream = createDummyStream();
+    const call = peer.call(ROOM_ID, dummyStream, { metadata: { clientId, name: studentName } });
+    if (!call) { showNotStarted(); return; }
+
+    call.on('stream', (remoteStream) => {
+      if (isYoutubeMode) return;
+      loaderIcon.style.display = 'none';
+      currentLiveStream = remoteStream;
+      remoteVideo.srcObject = remoteStream;
+      remoteVideo.play().catch(() => {});
+      controlsBar.style.display = 'flex';
+      // replay-nav appears only when toggled on, not automatically
+      statusLine.textContent = 'You are connected to the live class.';
+      startElapsedTimer();
+      startReplayRecorder(remoteStream);
+    });
+    call.on('close', () => { if (isYoutubeMode) return; stopElapsedTimer(); stopReplayRecorder(); replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active'); showNotStarted(); });
+    call.on('error', () => { showNotStarted(); });
+  });
+
+  peer.on('error', (err) => {
+    if (isYoutubeMode) return;
+    if (err.type === 'peer-unavailable') showNotStarted();
+    else { loaderIcon.style.display = 'none'; statusLine.textContent = 'Could not connect: ' + err.type; }
+  });
+}
+
+retryBtn.addEventListener('click', () => { if (peer) peer.destroy(); attemptJoin(); });
+
+playPauseBtn.addEventListener('click', () => {
+  if (isYoutubeMode) {
+    if (!ytReady || !ytPlayer) return;
+    if (ytPlayer.getPlayerState() !== 1) { ytPlayer.playVideo(); playPauseBtn.textContent = '⏸'; }
+    else { ytPlayer.pauseVideo(); playPauseBtn.textContent = '▶'; }
+    return;
+  }
+  if (remoteVideo.paused) { remoteVideo.play(); playPauseBtn.textContent = '⏸'; }
+  else { remoteVideo.pause(); playPauseBtn.textContent = '▶'; }
+});
+let userMuted = true;
+function updateVolSliderFill(v) {
+  volSlider.style.background = 'linear-gradient(to right, var(--red) ' + v + '%, #fff ' + v + '%)';
+}
+updateVolSliderFill(100);
+
+volBtn.addEventListener('click', () => {
+  if (isYoutubeMode) {
+    if (!ytReady || !ytPlayer) return;
+    const nowMuted = !ytPlayer.isMuted();
+    if (nowMuted) { ytPlayer.mute(); volSlider.value = 0; volBtn.textContent = '🔇'; updateVolSliderFill(0); }
+    else {
+      if (volSlider.value == 0) volSlider.value = 100;
+      ytPlayer.unMute(); ytPlayer.setVolume(volSlider.value);
+      volBtn.textContent = volSlider.value < 50 ? '🔉' : '🔊';
+      updateVolSliderFill(volSlider.value);
+    }
+    return;
+  }
+  remoteVideo.muted = !remoteVideo.muted;
+  userMuted = remoteVideo.muted;
+  if (remoteVideo.muted) { volSlider.value = 0; volBtn.textContent = '🔇'; updateVolSliderFill(0); }
+  else {
+    if (volSlider.value == 0) volSlider.value = 100;
+    remoteVideo.volume = volSlider.value / 100;
+    remoteVideo.play().catch(() => {});
+    volBtn.textContent = volSlider.value < 50 ? '🔉' : '🔊';
+    updateVolSliderFill(volSlider.value);
+  }
+});
+volSlider.addEventListener('input', () => {
+  const v = parseInt(volSlider.value, 10);
+  if (isYoutubeMode) {
+    if (!ytReady || !ytPlayer) return;
+    if (v === 0) ytPlayer.mute(); else { ytPlayer.unMute(); ytPlayer.setVolume(v); }
+    volBtn.textContent = v === 0 ? '🔇' : (v < 50 ? '🔉' : '🔊');
+    updateVolSliderFill(v);
+    return;
+  }
+  remoteVideo.muted = v === 0;
+  userMuted = remoteVideo.muted;
+  remoteVideo.volume = v / 100;
+  volBtn.textContent = v === 0 ? '🔇' : (v < 50 ? '🔉' : '🔊');
+  updateVolSliderFill(v);
+  if (v > 0) remoteVideo.play().catch(() => {});
+});
+const rotateBtn = document.getElementById('rotateBtn');
+const exitRotateBtn = document.getElementById('exitRotateBtn');
+
+function applyForcedLandscape() {
+  document.body.classList.add('force-landscape');
+}
+function removeForcedLandscape() {
+  document.body.classList.remove('force-landscape');
+}
+
+rotateBtn.addEventListener('click', () => {
+  const tryCssFallback = () => applyForcedLandscape();
+
+  // Try the real (native) rotate first — best experience when the browser allows it.
+  const attemptNativeLock = () => {
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(tryCssFallback);
+    } else {
+      tryCssFallback();
+    }
+  };
+
+  if (!document.fullscreenElement) {
+    player.requestFullscreen().then(attemptNativeLock).catch(tryCssFallback);
+  } else {
+    attemptNativeLock();
+  }
+});
+
+exitRotateBtn.addEventListener('click', () => {
+  removeForcedLandscape();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+});
+
+// If the phone is actually turned to landscape naturally, drop the CSS trick so it doesn't double-rotate.
+window.addEventListener('resize', () => {
+  if (document.body.classList.contains('force-landscape') && window.matchMedia('(orientation: landscape)').matches) {
+    removeForcedLandscape();
+  }
+});
+
+fsBtn.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    player.requestFullscreen().then(() => {
+      // Rotate to landscape automatically, like YouTube — mainly works on Android Chrome;
+      // iOS Safari doesn't support orientation lock, so iPhone users still rotate manually.
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    }).catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && screen.orientation && screen.orientation.unlock) {
+    try { screen.orientation.unlock(); } catch (e) {}
+  }
+});
+
+/* ===== Playback quality (data-saver) — a student on a slow connection can
+   pick Low/Medium so the teacher's stream sends less data to just them,
+   using per-connection WebRTC encoding limits rather than a fixed setting. */
+qualityBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  qualityMenu.classList.toggle('show');
+});
+document.addEventListener('click', () => qualityMenu.classList.remove('show'));
+qualityMenu.querySelectorAll('.quality-opt').forEach(opt => {
+  opt.addEventListener('click', (e) => {
+    e.stopPropagation();
+    qualityMenu.querySelectorAll('.quality-opt').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    qualityMenu.classList.remove('show');
+    studentDocRef().set({ qualityPref: opt.dataset.q }, { merge: true });
+  });
+});
+
+/* ===== Chat, Mentions & Reactions =====
+   Messages now carry studentId (the same clientId used for presence/block),
+   so the teacher panel's private-chat mode and end-of-stream analytics can
+   attribute messages/reactions correctly. */
+const chatList = document.getElementById('chatList');
+const chatEmpty = document.getElementById('chatEmpty');
+const chatInput = document.getElementById('chatInput');
+const chatSendBtn = document.getElementById('chatSendBtn');
+const chatBlockedNote = document.getElementById('chatBlockedNote');
+const charCounter = document.getElementById('charCounter');
+const emojiToggleBtn = document.getElementById('emojiToggleBtn');
+const emojiPopup = document.getElementById('emojiPopup');
+const reactionTally = document.getElementById('reactionTally');
+
+const REACTION_EMOJIS = ['👍','❤️','😂','😮','👏','🎉','🤔','🔥'];
+emojiPopup.innerHTML = REACTION_EMOJIS.map(e => '<button type="button" class="emoji-opt" data-e="' + e + '">' + e + '</button>').join('');
+emojiPopup.querySelectorAll('.emoji-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    reactionsRef().add({ name: studentName, studentId: clientId, emoji: btn.dataset.e, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
+    emojiPopup.classList.remove('show');
+  });
+});
+emojiToggleBtn.addEventListener('click', () => { if (!emojiToggleBtn.disabled) emojiPopup.classList.toggle('show'); });
+
+function listenReactions() {
+  reactionsRef().orderBy('ts', 'asc').limitToLast(500).onSnapshot(snap => {
+    const totals = {};
+    snap.forEach(doc => {
+      const r = doc.data();
+      totals[r.emoji] = (totals[r.emoji] || 0) + 1;
+    });
+    reactionTally.innerHTML = Object.entries(totals).map(([e, c]) => '<span class="reaction-chip">' + e + ' ' + c + '</span>').join('');
+  });
+}
+
+/* Renders @Name as a highlighted mention span; text is escaped first so
+   this can't inject markup. */
+function renderMsgText(text) {
+  const escaped = escapeHtml(text || '');
+  return escaped.replace(/@([A-Za-z0-9_ .]{1,20}?)(?=[\s.,!?]|$)/g, '<span class="chat-mention">@$1</span>');
+}
+
+chatInput.addEventListener('input', () => {
+  const len = chatInput.value.length;
+  charCounter.textContent = len + '/50';
+  charCounter.classList.toggle('limit', len >= 50);
+});
+
+let lastChatSnap = null;
+
+/* Re-renders from the last snapshot — used both by listenChat itself and
+   whenever the teacher flips Private Chat on/off, so the view updates
+   immediately without waiting for a new message. */
+function renderChatMessages() {
+  if (!lastChatSnap) return;
+  chatList.innerHTML = '';
+  const docs = [];
+  lastChatSnap.forEach(doc => docs.push(doc.data()));
+  const visible = roomPrivateChat
+    ? docs.filter(m => m.isAdmin || m.studentId === clientId)
+    : docs;
+  if (!visible.length) { chatList.appendChild(chatEmpty); return; }
+  visible.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'chat-msg' + (m.isAdmin ? ' admin' : '');
+    div.innerHTML = '<span class="chat-name">' + escapeHtml(m.name || 'Student') + '</span>' + renderMsgText(m.text);
+    chatList.appendChild(div);
+  });
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
+function listenChat() {
+  messagesRef().orderBy('ts', 'asc').limitToLast(150).onSnapshot(snap => {
+    lastChatSnap = snap;
+    renderChatMessages();
+  });
+}
+
+function sendStudentMsg() {
+  if (blockType || !roomChatEnabled) return; // chat-muted, fully blocked, or teacher turned chat off
+  const text = chatInput.value.trim().slice(0, 50);
+  if (!text) return;
+  const mentions = Array.from(text.matchAll(/@([A-Za-z0-9_ .]{1,20})/g)).map(m => m[1].trim());
+  messagesRef().add({ name: studentName, studentId: clientId, text, mentions, isAdmin: false, ts: firebase.firestore.FieldValue.serverTimestamp() });
+  chatInput.value = '';
+  charCounter.textContent = '0/50';
+  charCounter.classList.remove('limit');
+}
+chatSendBtn.addEventListener('click', sendStudentMsg);
+chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendStudentMsg(); });
+
+/* ===== Poll ===== */
+const pollBox = document.getElementById('pollBox');
+const pollQuestionEl = document.getElementById('pollQuestionEl');
+const pollOptionsEl = document.getElementById('pollOptionsEl');
+const pollResultsArea = document.getElementById('pollResultsArea');
+const pollStatusEl = document.getElementById('pollStatusEl');
+
+function renderResultsBars(data) {
+  const votes = data.votes || {};
+  const counts = new Array(data.options.length).fill(0);
+  Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+  const total = counts.reduce((a, b) => a + b, 0) || 1;
+  pollResultsArea.innerHTML = data.options.map((opt, i) => {
+    const pct = Math.round((counts[i] / total) * 100);
+    return '<div class="poll-bar-row"><div class="poll-bar-label"><span>' + escapeHtml(opt) + '</span><span>' + counts[i] + '</span></div><div class="poll-bar-track"><div class="poll-bar-fill" style="width:' + pct + '%"></div></div></div>';
+  }).join('');
+}
+
+function listenPoll() {
+  pollDocRef().onSnapshot(doc => {
+    if (!doc.exists) { pollBox.classList.remove('show'); return; }
+    const data = doc.data();
+    pollBox.classList.add('show');
+    pollQuestionEl.textContent = data.question;
+    const voted = data.votes && data.votes[clientId] !== undefined;
+
+    if (data.status === 'closed') {
+      pollOptionsEl.innerHTML = '';
+      renderResultsBars(data);
+      pollStatusEl.textContent = 'This poll is closed — results are above.';
+    } else if (voted) {
+      pollOptionsEl.innerHTML = '';
+      pollResultsArea.innerHTML = '';
+      pollStatusEl.textContent = 'Your vote has been recorded ✓ — waiting for results.';
+    } else {
+      pollResultsArea.innerHTML = '';
+      pollStatusEl.textContent = '';
+      pollOptionsEl.innerHTML = data.options.map((opt, i) =>
+        '<button class="poll-opt-btn" data-i="' + i + '">' + escapeHtml(opt) + '</button>'
+      ).join('');
+      pollOptionsEl.querySelectorAll('.poll-opt-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.i);
+          pollDocRef().update({ ['votes.' + clientId]: idx });
+        });
+      });
+    }
+  });
+}
+
+/* ===== Instant Replay (last ~1 minute, client-side only) =====
+   There's no server-side recording, so this is a browser-only "jugaad":
+   the incoming live stream is recorded in rolling 10-second segments in
+   the background. Each segment is its own small recording (so it has a
+   valid, playable header), and we keep the last 6 (~60s). Tap the ⏪
+   button in the controls to jump into replay — it plays right in the same
+   full-size video, then ⏮/⏭ step you through the buffered segments.
+   Tap the button again (it turns red) to jump back to live.
+   It resets if the page is refreshed or the stream drops. */
+const REPLAY_SEGMENT_MS = 10000;
+const REPLAY_MAX_SEGMENTS = 6;
+let replaySegments = [];
+let segRecorder = null;
+let segChunks = [];
+let currentLiveStream = null;
+let isLiveMode = true;
+let currentSegIndex = -1;
+
+function startReplayRecorder(stream) {
+  stopReplayRecorder();
+  isLiveMode = true;
+  if (!window.MediaRecorder) return;
+  let mimeType = 'video/webm;codecs=vp8,opus';
+  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+  function recordSegment() {
+    if (!stream.active) return;
+    segChunks = [];
+    try { segRecorder = new MediaRecorder(stream, { mimeType }); }
+    catch (e) { return; }
+
+    segRecorder.ondataavailable = (e) => { if (e.data && e.data.size) segChunks.push(e.data); };
+    segRecorder.onstop = () => {
+      if (segChunks.length) {
+        const blob = new Blob(segChunks, { type: mimeType });
+        replaySegments.push({ blob, url: URL.createObjectURL(blob) });
+        if (replaySegments.length > REPLAY_MAX_SEGMENTS) {
+          const old = replaySegments.shift();
+          URL.revokeObjectURL(old.url);
+          if (currentSegIndex >= 0) currentSegIndex = Math.max(0, currentSegIndex - 1);
+        }
+      }
+      if (stream.active) recordSegment();
+    };
+    segRecorder.start();
+    setTimeout(() => { if (segRecorder && segRecorder.state === 'recording') segRecorder.stop(); }, REPLAY_SEGMENT_MS);
+  }
+  recordSegment();
+}
+
+function stopReplayRecorder() {
+  if (segRecorder && segRecorder.state === 'recording') { try { segRecorder.stop(); } catch (e) {} }
+  segRecorder = null;
+  replaySegments.forEach(s => URL.revokeObjectURL(s.url));
+  replaySegments = [];
+  currentSegIndex = -1;
+  isLiveMode = true;
+  currentLiveStream = null;
+}
+
+function goLive() {
+  isLiveMode = true;
+  currentSegIndex = -1;
+  remoteVideo.removeAttribute('src');
+  remoteVideo.srcObject = currentLiveStream;
+  remoteVideo.muted = userMuted;
+  remoteVideo.play().catch(() => {});
+  replayNav.style.display = 'none';
+  replayToggleBtn.classList.remove('active');
+  livePill.style.opacity = '1';
+}
+
+function showReplaySegment(i) {
+  if (i < 0 || i >= replaySegments.length) return;
+  isLiveMode = false;
+  currentSegIndex = i;
+  const seg = replaySegments[i];
+  remoteVideo.srcObject = null;
+  remoteVideo.src = seg.url;
+  remoteVideo.muted = userMuted;
+  remoteVideo.play().catch(() => {});
+
+  const stepsAgo = replaySegments.length - i;
+  replayNavLabel.textContent = stepsAgo <= 1 ? 'Most recent 10s' : (stepsAgo * 10) + 's ago';
+  replayPrevBtn.disabled = i === 0;
+  replayNextBtn.disabled = false;
+  replayNav.style.display = 'flex';
+  replayToggleBtn.classList.add('active');
+  livePill.style.opacity = '0.4';
+}
+
+replayToggleBtn.addEventListener('click', () => {
+  if (isLiveMode) {
+    if (!replaySegments.length) return; // buffer still building, nothing to show yet
+    showReplaySegment(replaySegments.length - 1);
+  } else {
+    goLive();
+  }
+});
+replayPrevBtn.addEventListener('click', () => showReplaySegment(currentSegIndex - 1));
+replayNextBtn.addEventListener('click', () => {
+  if (currentSegIndex + 1 >= replaySegments.length) goLive();
+  else showReplaySegment(currentSegIndex + 1);
+});
+
+remoteVideo.addEventListener('ended', () => {
+  if (isLiveMode) return;
+  // Clip finished — automatically step forward to the next, more recent segment
+  if (currentSegIndex >= 0 && currentSegIndex < replaySegments.length - 1) showReplaySegment(currentSegIndex + 1);
+  else goLive();
+});
+
+/* ===== Start everything now that all elements/functions are ready ===== */
+if (studentName) startEverything();
+</script>
+</body>
+</html>
