@@ -1060,13 +1060,35 @@ const REPLAY_TIMESLICE_MS = 1000;      // how often chunks are handed off — sm
 const REPLAY_MAX_SECONDS = 4 * 3600;   // ~4 hours safety cap, not a normal-use limit
 const REPLAY_TRIM_SECONDS = 300;       // trim 5 min at a time once over the cap, not every append
 const REPLAY_LIVE_EDGE_MARGIN = 0.75;  // seconds of slack before "caught up" hands off to the real live feed
+// The rewind buffer needs its own real-time re-encode of the live video
+// running in the background (separate from just decoding/showing it) —
+// that's real CPU work on top of normal playback. Capping its frame rate
+// and bitrate keeps that cost low and roughly constant no matter how much
+// motion is in the picture, instead of spiking (and dragging the whole
+// live view down with it) during high-motion moments. Full framerate/
+// quality isn't needed for a rewind feature anyway.
+const REPLAY_RECORDER_FPS = 8;
+const REPLAY_RECORDER_BITRATE = 400000; // ~400kbps, plenty for review at reduced fps
 
 let mseInitialized = false;
 let mediaSource = null;
 let sourceBuffer = null;
 let mseRecorder = null;
+let mseRecorderTrack = null; // the frame-rate-capped clone fed to mseRecorder, so we can stop() it on teardown
 let mseOpQueue = []; // queued {type:'append', buf} / {type:'remove', start, end} ops, run one at a time
 let sliderDragging = false;
+
+// Very weak/old devices — smart TVs especially — often can't afford this
+// second, background encode on top of just decoding+showing the live
+// video, even at a capped frame rate. Rather than risk stuttering the
+// live view for them, skip the rewind feature there entirely; live
+// viewing (the important part) stays completely unaffected either way.
+function isLowEndDevice() {
+  const ua = navigator.userAgent || '';
+  if (/SmartTV|SMART-TV|Tizen|WebOS|HbbTV|GoogleTV|AFTS|AFTB|AFTT|NetCast|VIDAA|BRAVIA|CrKey|Roku/i.test(ua)) return true;
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency > 0 && navigator.hardwareConcurrency <= 2) return true;
+  return false;
+}
 
 // While a late-joiner's missed portion is still being pulled in from Mega,
 // this student's own live chunks are held here (in arrival order) instead
@@ -1081,7 +1103,7 @@ let pendingLiveChunks = [];
 
 function initMseBuffer(stream) {
   teardownMseBuffer();
-  if (!window.MediaRecorder || !window.MediaSource) { replayNav.style.display = 'none'; return; } // no rewind support here; live keeps working fine
+  if (!window.MediaRecorder || !window.MediaSource || isLowEndDevice()) { replayNav.style.display = 'none'; return; } // no rewind here — keeps live viewing light and smooth
   replayNav.style.display = 'flex';
 
   mediaSource = new MediaSource();
@@ -1109,8 +1131,25 @@ function initMseBuffer(stream) {
       }
     });
 
-    try { mseRecorder = new MediaRecorder(stream, { mimeType }); }
-    catch (e) { return; }
+    // Record a capped-framerate CLONE of the video track (never the live
+    // track itself) so this background encode stays cheap and predictable
+    // even during high-motion moments, instead of competing with the live
+    // view's own decode/render for the same CPU. The clone is independent
+    // of the original, so this never touches what's actually shown live.
+    let recordStream = stream;
+    try {
+      const liveVideoTrack = stream.getVideoTracks()[0];
+      if (liveVideoTrack) {
+        mseRecorderTrack = liveVideoTrack.clone();
+        if (typeof mseRecorderTrack.applyConstraints === 'function') {
+          mseRecorderTrack.applyConstraints({ frameRate: { ideal: REPLAY_RECORDER_FPS, max: REPLAY_RECORDER_FPS } }).catch(() => {});
+        }
+        recordStream = new MediaStream([mseRecorderTrack, ...stream.getAudioTracks()]);
+      }
+    } catch (e) { recordStream = stream; } // fall back to recording the live track directly if cloning fails
+
+    try { mseRecorder = new MediaRecorder(recordStream, { mimeType, videoBitsPerSecond: REPLAY_RECORDER_BITRATE }); }
+    catch (e) { try { mseRecorder = new MediaRecorder(recordStream, { mimeType }); } catch (e2) { return; } }
     mseRecorder.ondataavailable = (e) => {
       if (!e.data || !e.data.size) return;
       e.data.arrayBuffer().then(buf => {
@@ -1198,6 +1237,7 @@ function maybeTrimBuffer() {
 function teardownMseBuffer() {
   if (mseRecorder && mseRecorder.state !== 'inactive') { try { mseRecorder.stop(); } catch (e) {} }
   mseRecorder = null;
+  if (mseRecorderTrack) { try { mseRecorderTrack.stop(); } catch (e) {} mseRecorderTrack = null; }
   mseOpQueue = [];
   historicalLoadPending = false;
   pendingLiveChunks = [];
