@@ -4,7 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes, maximum-scale=5.0">
 <title>Science World — Live Class</title>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script type="module">
+  // Used only to fetch already-uploaded Mega recording segments (public
+  // links, no login needed) so a late-joining student can catch up on the
+  // part of class they missed. See loadHistoricalSegments() below.
+  import { File } from 'https://unpkg.com/megajs/dist/main.browser-es.mjs';
+  window.__MegaFile = File;
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
@@ -46,6 +53,7 @@
   .player:fullscreen, .player:-webkit-full-screen{ position:fixed; top:0; left:0; margin:0; aspect-ratio:auto; width:100vw; height:100vh; border-radius:0; }
   .player:fullscreen video, .player:-webkit-full-screen video{ object-fit:contain; }
   video{ width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+  .video-layer{ position:absolute; inset:0; }
 
   .center-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.95rem; flex-direction:column; gap:12px; text-align:center; background:rgba(0,0,0,0.4); }
   .spinner{ width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:#fff; animation:spin 0.8s linear infinite; }
@@ -54,7 +62,8 @@
   .controls-bar{ position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); padding:26px 14px 10px; display:flex; align-items:center; gap:14px; }
   .ctrl-btn{ background:none; border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:6px; font-size:1.1rem; padding:0; }
   .ctrl-btn:hover{ background:rgba(255,255,255,0.15); }
-  .live-pill{ display:flex; align-items:center; gap:6px; background:var(--red); color:#fff; font-weight:700; font-size:0.72rem; padding:4px 10px; border-radius:20px; letter-spacing:0.04em; }
+  .live-pill{ display:flex; align-items:center; gap:6px; background:var(--red); color:#fff; font-weight:700; font-size:0.72rem; padding:4px 10px; border-radius:20px; letter-spacing:0.04em; cursor:pointer; transition:opacity 0.15s; }
+  .live-pill:hover{ opacity:0.85; }
   .live-pill .dot{ width:6px;height:6px;border-radius:50%; background:#fff; animation:pulse 1.3s infinite; }
   @keyframes pulse{ 0%{opacity:1;} 50%{opacity:0.3;} 100%{opacity:1;} }
   .elapsed{ color:#e5e2d6; font-size:0.8rem; font-variant-numeric:tabular-nums; }
@@ -100,11 +109,39 @@
   /* Branding watermark (shows in normal view and fullscreen) */
   .branding-watermark{ position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.45); color:#fff; font-size:0.68rem; font-weight:700; padding:4px 9px; border-radius:6px; letter-spacing:0.02em; z-index:4; pointer-events:none; }
 
-  /* Replay nav overlay — appears above the controls bar only in replay mode */
-  .replay-nav{ position:absolute; left:0; right:0; bottom:44px; padding:0 14px; display:flex; align-items:center; justify-content:center; gap:10px; z-index:6; }
-  .replay-nav .s-btn{ width:auto; padding:6px 12px; font-size:0.76rem; border-radius:6px; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.25); color:#fff; font-weight:600; cursor:pointer; }
-  .replay-nav .s-btn:disabled{ opacity:0.35; cursor:not-allowed; }
-  .replay-nav-label{ color:#fff; font-size:0.74rem; background:rgba(0,0,0,0.55); padding:5px 10px; border-radius:6px; font-weight:600; }
+  /* Floating reactions — emoji rise up from the bottom of the video and fade out,
+     like Instagram/YouTube Live, instead of only showing as a static count. */
+  .floating-reactions{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:5; }
+  .floating-emoji{ position:absolute; bottom:8%; font-size:1.8rem; opacity:0; animation:floatUp 2.6s ease-out forwards; will-change:transform,opacity; }
+  @keyframes floatUp{
+    0%   { opacity:0; transform:translateY(0) scale(0.6) rotate(var(--rot-start,0deg)); }
+    12%  { opacity:1; transform:translateY(-10px) scale(1.15) rotate(var(--rot-start,0deg)); }
+    100% { opacity:0; transform:translateY(-220px) scale(1) rotate(var(--rot-end,0deg)); }
+  }
+
+  /* Replay nav — a single smooth YouTube-Live-style scrub line, sitting
+     just above the controls bar at the bottom of the player. No extra step
+     buttons — drag/tap anywhere on the line to scrub, tap the LIVE pill
+     (in the controls bar) to jump back to now. */
+  .replay-nav{ position:absolute; left:0; right:0; bottom:44px; height:16px; display:flex; align-items:center; padding:0 14px; z-index:6; }
+  .replay-slider{ width:100%; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px; outline:none; cursor:pointer; margin:0; background:rgba(255,255,255,0.3); transition:height 0.1s; }
+  .replay-slider:active{ height:6px; }
+  /* Thumb ("circle") kept perfectly centered on the line at both track
+     heights (resting 4px and active 6px), and sized/placed to match the
+     reference — a solid red-ringed dot riding exactly on the line. */
+  .replay-slider::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#fff; border:2.5px solid var(--red); cursor:pointer; margin-top:-4px; box-shadow:0 0 0 2px rgba(0,0,0,0.25); }
+  .replay-slider:active::-webkit-slider-thumb{ margin-top:-3px; }
+  .replay-slider::-moz-range-thumb{ width:12px; height:12px; border-radius:50%; background:#fff; border:2.5px solid var(--red); cursor:pointer; box-shadow:0 0 0 2px rgba(0,0,0,0.25); }
+  /* Live/scrub position label — now lives next to the elapsed timer in the
+     controls bar instead of floating over the line, only shown mid-replay. */
+  .replay-nav-label{ display:none; color:#ffce54; font-size:0.72rem; font-weight:700; background:rgba(0,0,0,0.55); padding:3px 8px; border-radius:5px; white-space:nowrap; }
+  .replay-nav-label.show{ display:inline-block; }
+  /* Speed badge shown next to the elapsed time while watching a replayed
+     segment. It's now a clickable button — tap to cycle the replay speed
+     (student's choice, capped at 2x). */
+  .speed-badge{ display:none; color:#ffce54; font-size:0.72rem; font-weight:800; background:rgba(0,0,0,0.55); padding:3px 7px; border-radius:5px; letter-spacing:0.03em; border:none; cursor:pointer; }
+  .speed-badge.show{ display:inline-block; }
+  .speed-badge:hover{ background:rgba(0,0,0,0.75); }
 
   /* Volume slider — filled portion (current level) red, rest white; background set via JS */
   .vol-slider{ width:64px; -webkit-appearance:none; appearance:none; height:5px; border-radius:3px; outline:none; cursor:pointer; margin:0; background:linear-gradient(to right, var(--red) 100%, #fff 100%); }
@@ -113,7 +150,7 @@
   .vol-slider::-webkit-slider-runnable-track{ height:5px; border-radius:3px; background:transparent; }
   .vol-slider::-moz-range-track{ height:5px; border-radius:3px; background:transparent; }
 
-  #replayToggleBtn.active{ background:var(--red); }
+  #raiseHandBtn.active{ background:#e8a83c; color:#1a1a1a; }
 
   /* Quality gear menu (data-saver control) */
   .quality-wrap{ position:relative; }
@@ -194,8 +231,10 @@
 
     <div class="video-col">
       <div class="player" id="player">
-        <video id="remoteVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline muted class="video-layer"></video>
+        <video id="replayVideo" playsinline class="video-layer" style="display:none;"></video>
         <div class="branding-watermark">🔬 Science World</div>
+        <div class="floating-reactions" id="floatingReactions"></div>
         <div class="center-icon" id="loaderIcon">
           <div class="spinner"></div>
           <span>Connecting to class...</span>
@@ -204,6 +243,7 @@
           <div class="notstarted-icon">🕒</div>
           <div class="notstarted-title">Class Hasn't Started Yet</div>
           <p class="notstarted-sub">Please wait for the teacher to start the class. It will connect automatically as soon as the teacher goes live.</p>
+          <div class="notstarted-sub" id="scheduleBanner" style="display:none; margin-top:10px; font-weight:700; background:rgba(255,255,255,0.08); padding:8px 12px; border-radius:8px;"></div>
           <button id="retryBtn">Try Again</button>
         </div>
         <div class="notstarted" id="blockedOverlay" style="background:#3a1611;">
@@ -213,19 +253,20 @@
         </div>
 
         <div class="replay-nav" id="replayNav" style="display:none;">
-          <button class="s-btn" id="replayPrevBtn">⏮ -10s</button>
-          <span class="replay-nav-label" id="replayNavLabel">Replay</span>
-          <button class="s-btn" id="replayNextBtn">+10s ⏭</button>
+          <input type="range" class="replay-slider" id="replaySlider" min="0" max="0" value="0" step="1">
         </div>
 
         <div class="controls-bar" id="controlsBar" style="display:none;">
           <button class="ctrl-btn" id="playPauseBtn" title="Play/Pause">⏸</button>
           <button class="ctrl-btn" id="volBtn" title="Mute/Unmute">🔇</button>
           <input type="range" id="volSlider" class="vol-slider" min="0" max="100" value="100" title="Volume">
-          <div class="live-pill" id="livePill"><span class="dot"></span> LIVE</div>
-          <span class="elapsed" id="elapsedTime">00:00</span>
+          <div class="live-pill" id="livePill" title="Go to live"><span class="dot"></span> LIVE</div>
+          <span class="elapsed" id="elapsedTime" title="Class length">00:00</span>
+          <span class="replay-nav-label" id="replayNavLabel">Live edge</span>
+          <button class="speed-badge" id="speedBadge" title="Playback speed">1x</button>
           <div class="spacer"></div>
-          <button class="ctrl-btn" id="replayToggleBtn" title="Watch last 1 minute">⏪</button>
+
+          <button class="ctrl-btn" id="raiseHandBtn" title="Raise Hand (ask a doubt)">✋</button>
           <div class="quality-wrap">
             <button class="ctrl-btn" id="qualityBtn" title="Playback Quality">⚙</button>
             <div class="quality-menu" id="qualityMenu">
@@ -249,6 +290,10 @@
           <div id="pollOptionsEl"></div>
           <div id="pollResultsArea"></div>
           <div class="poll-status" id="pollStatusEl"></div>
+          <div id="leaderboardArea" style="display:none; margin-top:14px; padding-top:12px; border-top:1.5px solid #ded6c2;">
+            <div class="side-tab" style="margin-bottom:8px;">🏆 Leaderboard</div>
+            <div id="leaderboardBody"></div>
+          </div>
         </div>
 
         <div class="chat-section">
@@ -286,6 +331,52 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+
+/* ===== LiveKit config =====
+   Paste your LiveKit Cloud project's values here (Settings -> API Keys).
+   NOTE: exposing the API secret in client-side code is the same trust
+   model this app already uses for the Firebase config above — fine for
+   a small institute, but anyone with this file could mint tokens for
+   your project. If that ever matters, move createLiveKitToken() to a
+   tiny backend endpoint instead and fetch the token from there. */
+const LIVEKIT_URL = "wss://live-4ytpiw42.livekit.cloud";
+const LIVEKIT_API_KEY = "API8Thk7bDht2Ti";
+const LIVEKIT_API_SECRET = "cJGJoRw2fObfbTDWhRdZpf5cxqun0hCHqNf8rVsgzTJC";
+
+function base64url(input) {
+  let bytes;
+  if (typeof input === 'string') bytes = new TextEncoder().encode(input);
+  else bytes = new Uint8Array(input);
+  let str = '';
+  bytes.forEach(b => { str += String.fromCharCode(b); });
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function createLiveKitToken(identity, name, roomName, canPublish, canSubscribe) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: LIVEKIT_API_KEY,
+    sub: identity,
+    name: name || identity,
+    nbf: now - 10,
+    exp: now + 6 * 60 * 60,
+    video: {
+      room: roomName,
+      roomJoin: true,
+      canPublish: !!canPublish,
+      canSubscribe: !!canSubscribe,
+      canPublishData: true
+    }
+  };
+  const toSign = base64url(JSON.stringify(header)) + '.' + base64url(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(LIVEKIT_API_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(toSign));
+  return toSign + '.' + base64url(sigBuf);
+}
 
 function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function roomRef(){ return db.collection('rooms').doc(ROOM_ID); }
@@ -329,8 +420,10 @@ if (studentName) {
   nameModal.style.display = 'none';
 }
 
-/* ===== WebRTC ===== */
-let peer = null;
+/* ===== LiveKit ===== */
+let room = null;
+let currentVideoPublication = null;
+let remoteMediaStream = null;
 let startTime = null;
 let elapsedInterval = null;
 
@@ -348,17 +441,37 @@ const elapsedTime = document.getElementById('elapsedTime');
 const statusLine = document.getElementById('statusLine');
 const player = document.getElementById('player');
 const replayNav = document.getElementById('replayNav');
-const replayPrevBtn = document.getElementById('replayPrevBtn');
-const replayNextBtn = document.getElementById('replayNextBtn');
+const replaySlider = document.getElementById('replaySlider');
 const replayNavLabel = document.getElementById('replayNavLabel');
-const replayToggleBtn = document.getElementById('replayToggleBtn');
 const livePill = document.getElementById('livePill');
+const speedBadge = document.getElementById('speedBadge');
+const replayVideo = document.getElementById('replayVideo');
+let isLiveMode = true; // false while scrubbing/watching the rewind buffer
+function activeVideo() { return isLiveMode ? remoteVideo : replayVideo; }
 const qualityBtn = document.getElementById('qualityBtn');
 const qualityMenu = document.getElementById('qualityMenu');
 
 /* ===== Presence (so the teacher can see & block this student) ===== */
 function studentDocRef(){ return roomRef().collection('students').doc(clientId); }
 function myBlockedRef(){ return roomRef().collection('blocked').doc(clientId); }
+
+/* ===== Class Schedule banner (shown only while class hasn't started) ===== */
+const scheduleBanner = document.getElementById('scheduleBanner');
+function scheduleRef(){ return roomRef().collection('meta').doc('schedule'); }
+function fmtScheduleDate(ms) {
+  const d = new Date(ms);
+  return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+scheduleRef().onSnapshot(doc => {
+  if (!doc.exists) { scheduleBanner.style.display = 'none'; return; }
+  const d = doc.data();
+  if (!d.startsAtMillis || d.startsAtMillis < Date.now() - 3600000) { // hide once >1hr in the past
+    scheduleBanner.style.display = 'none';
+    return;
+  }
+  scheduleBanner.textContent = '📅 Next class: ' + fmtScheduleDate(d.startsAtMillis) + (d.note ? ' — ' + d.note : '');
+  scheduleBanner.style.display = 'block';
+});
 
 function registerStudent() {
   studentDocRef().set({
@@ -371,10 +484,39 @@ function registerStudent() {
   }, 15000);
 }
 
+/* ===== Raise Hand (doubt queue) =====
+   Simple toggle: tapping ✋ writes one small doc so the teacher's queue
+   picks it up in join order (FIFO by raisedAt). Tapping again — or the
+   teacher resolving it from their side — removes it. */
+const raiseHandBtn = document.getElementById('raiseHandBtn');
+function handRaiseRef(){ return roomRef().collection('handRaises').doc(clientId); }
+let handRaised = false;
+
+function setHandRaisedUI(isRaised) {
+  handRaised = isRaised;
+  raiseHandBtn.classList.toggle('active', isRaised);
+  raiseHandBtn.title = isRaised ? 'Lower hand' : 'Raise Hand (ask a doubt)';
+}
+
+raiseHandBtn.addEventListener('click', () => {
+  if (handRaised) {
+    handRaiseRef().delete();
+    setHandRaisedUI(false);
+  } else {
+    handRaiseRef().set({ name: studentName, raisedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    setHandRaisedUI(true);
+  }
+});
+
+// If the teacher resolves/clears it from their side, reflect that here too.
+handRaiseRef().onSnapshot(doc => { setHandRaisedUI(doc.exists); });
+
 let blockType = null;
 let roomChatEnabled = true;
 let roomReactionsEnabled = true;
 let roomPrivateChat = false;
+let activeRecordingSessionId = null;
+let classStartedAtMs = null;
 
 /* Combines the personal chat-mute (from the "blocked" doc) with the
    teacher's room-wide Chat/Reactions switches, and shows the right
@@ -401,7 +543,7 @@ function updateChatInputState() {
 }
 
 /* Live room-wide settings the teacher controls from the panel:
-   chatEnabled / reactionsEnabled / privateChat. */
+   chatEnabled / reactionsEnabled / privateChat / activeRecordingSessionId. */
 function listenRoomSettings() {
   roomRef().onSnapshot(doc => {
     const d = doc.data() || {};
@@ -411,6 +553,17 @@ function listenRoomSettings() {
     roomPrivateChat = d.privateChat === true;         // default false
     updateChatInputState();
     if (wasPrivate !== roomPrivateChat) renderChatMessages(); // re-filter what's shown
+
+    // Which Mega cloud-recording session (if any) the teacher currently has
+    // running — used so a late-joining student can pull in the segments
+    // uploaded before they connected. See loadHistoricalSegments().
+    activeRecordingSessionId = d.activeRecordingSessionId || null;
+
+    // Real wall-clock moment the teacher went live, so the elapsed-time
+    // display reflects the actual class length rather than just how long
+    // this particular student has been on the page.
+    classStartedAtMs = (d.classStartedAt && typeof d.classStartedAt.toMillis === 'function')
+      ? d.classStartedAt.toMillis() : null;
   });
 }
 
@@ -431,85 +584,135 @@ function listenBlockStatus() {
       notStartedOverlay.classList.remove('show');
       loaderIcon.style.display = 'none';
       controlsBar.style.display = 'none';
-      replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active');
+      replayNav.style.display = 'none'; speedBadge.classList.remove('show'); replayNavLabel.classList.remove('show');
       stopElapsedTimer();
-      stopReplayRecorder();
-      if (peer) peer.destroy();
+      teardownMseBuffer();
+      mseInitialized = false;
+      if (room) room.disconnect();
     } else if (blockType === 'chat') {
       updateChatInputState();
     }
   });
 }
 
-const iceConfig = {
-  iceServers: [
-    { urls: "stun:stun.relay.metered.ca:80" },
-    { urls: "turn:global.relay.metered.ca:80", username: "398918334c99a4f629ac9e60", credential: "d6o4Pj8ZG6RlTytA" },
-    { urls: "turn:global.relay.metered.ca:443", username: "398918334c99a4f629ac9e60", credential: "d6o4Pj8ZG6RlTytA" }
-  ]
-};
-
-function createDummyStream() {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioCtx.createOscillator();
-  const audioDst = audioCtx.createMediaStreamDestination();
-  oscillator.connect(audioDst);
-  oscillator.start();
-  const audioTrack = audioDst.stream.getAudioTracks()[0];
-  const canvas = document.createElement('canvas');
-  canvas.width = 2; canvas.height = 2;
-  canvas.getContext('2d').fillRect(0, 0, 2, 2);
-  const videoTrack = canvas.captureStream(1).getVideoTracks()[0];
-  return new MediaStream([audioTrack, videoTrack]);
-}
-
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
-function startElapsedTimer(){ startTime = Date.now(); elapsedInterval = setInterval(() => { const secs = Math.floor((Date.now() - startTime)/1000); elapsedTime.textContent = pad(Math.floor(secs/60)) + ':' + pad(secs%60); }, 1000); }
+// The timer shows real class length (since the teacher actually went live),
+// not just how long this student personally has been watching — important
+// for late joiners. classStartedAtMs comes from Firestore (see
+// listenRoomSettings) and may arrive slightly after the timer starts; each
+// tick re-checks it so the display corrects itself the moment it's known,
+// falling back to this student's own join time until then.
+function startElapsedTimer(){
+  startTime = Date.now();
+  elapsedInterval = setInterval(() => {
+    const base = classStartedAtMs || startTime;
+    const secs = Math.max(0, Math.floor((Date.now() - base)/1000));
+    elapsedTime.textContent = pad(Math.floor(secs/60)) + ':' + pad(secs%60);
+  }, 1000);
+}
 function stopElapsedTimer(){ if (elapsedInterval) clearInterval(elapsedInterval); }
 
-function showNotStarted(){ loaderIcon.style.display='none'; controlsBar.style.display='none'; replayNav.style.display='none'; replayToggleBtn.classList.remove('active'); notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
+function showNotStarted(){ loaderIcon.style.display='none'; controlsBar.style.display='none'; replayNav.style.display='none'; notStartedOverlay.classList.add('show'); statusLine.textContent='Waiting for the teacher to go live.'; }
 function hideNotStarted(){ notStartedOverlay.classList.remove('show'); }
 
-function attemptJoin() {
+/* ===== LiveKit subscribe (replaces the old PeerJS call.on('stream', ...)) =====
+   LiveKit is an SFU: we just connect to the room as a subscriber and any
+   track the teacher publishes gets pushed to us automatically — no manual
+   "call" or offer/answer handling needed. Video + audio arrive as two
+   separate track events, so we merge them into one MediaStream ourselves
+   to keep feeding the same remoteVideo element + instant-replay recorder
+   the rest of this file already expects. */
+function attachRemoteTrack(track) {
+  if (!remoteMediaStream) remoteMediaStream = new MediaStream();
+  remoteMediaStream.addTrack(track.mediaStreamTrack);
+  remoteVideo.srcObject = remoteMediaStream;
+  remoteVideo.muted = isLiveMode ? userMuted : true;
+  remoteVideo.play().catch(() => {});
+}
+
+function detachRemoteTrack(track) {
+  if (remoteMediaStream) { try { remoteMediaStream.removeTrack(track.mediaStreamTrack); } catch (e) {} }
+}
+
+function onTeacherWentLive() {
+  loaderIcon.style.display = 'none';
+  controlsBar.style.display = 'flex';
+  statusLine.textContent = 'You are connected to the live class.';
+  startElapsedTimer();
+  if (!mseInitialized) { mseInitialized = true; initMseBuffer(remoteMediaStream); }
+}
+
+function onTeacherWentOffline() {
+  stopElapsedTimer();
+  teardownMseBuffer();
+  mseInitialized = false;
+  replayNav.style.display = 'none';
+  speedBadge.classList.remove('show');
+  showNotStarted();
+}
+
+async function attemptJoin() {
   if (blockType === 'full') return; // teacher has removed this student from the class
 
   hideNotStarted();
   loaderIcon.style.display = 'flex';
   controlsBar.style.display = 'none';
+  remoteMediaStream = null;
+  currentVideoPublication = null;
 
-  peer = new Peer(undefined, { debug: 1, config: iceConfig });
+  try {
+    const token = await createLiveKitToken(clientId, studentName, ROOM_ID, false, true);
+    // adaptiveStream needs track.attach() to know how big the video is being
+    // shown — we build our own combined MediaStream instead (for the replay
+    // buffer), so adaptiveStream can't see that and would default to a low
+    // layer. We turn it off and just request HIGH ourselves on subscribe;
+    // the student's own quality menu can still ask for Low/Medium anytime.
+    room = new LivekitClient.Room({ adaptiveStream: false, dynacast: true });
 
-  peer.on('open', () => {
-    const dummyStream = createDummyStream();
-    const call = peer.call(ROOM_ID, dummyStream, { metadata: { clientId, name: studentName } });
-    if (!call) { showNotStarted(); return; }
-
-    call.on('stream', (remoteStream) => {
-      loaderIcon.style.display = 'none';
-      currentLiveStream = remoteStream;
-      remoteVideo.srcObject = remoteStream;
-      remoteVideo.play().catch(() => {});
-      controlsBar.style.display = 'flex';
-      // replay-nav appears only when toggled on, not automatically
-      statusLine.textContent = 'You are connected to the live class.';
-      startElapsedTimer();
-      startReplayRecorder(remoteStream);
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication) => {
+      if (track.kind === 'video') {
+        currentVideoPublication = publication;
+        publication.setVideoQuality(LivekitClient.VideoQuality.HIGH);
+      }
+      attachRemoteTrack(track);
+      onTeacherWentLive();
     });
-    call.on('close', () => { stopElapsedTimer(); stopReplayRecorder(); replayNav.style.display = 'none'; replayToggleBtn.classList.remove('active'); showNotStarted(); });
-    call.on('error', () => { showNotStarted(); });
-  });
+    room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => { detachRemoteTrack(track); });
+    room.on(LivekitClient.RoomEvent.ParticipantDisconnected, () => {
+      if (!room || room.remoteParticipants.size === 0) onTeacherWentOffline();
+    });
+    room.on(LivekitClient.RoomEvent.Disconnected, () => { onTeacherWentOffline(); });
 
-  peer.on('error', (err) => {
-    if (err.type === 'peer-unavailable') showNotStarted();
-    else { loaderIcon.style.display = 'none'; statusLine.textContent = 'Could not connect: ' + err.type; }
-  });
+    await room.connect(LIVEKIT_URL, token);
+
+    // Teacher may already have been live before we joined — pick up any tracks already published.
+    let foundLive = false;
+    room.remoteParticipants.forEach((participant) => {
+      participant.trackPublications.forEach((pub) => {
+        if (pub.isSubscribed && pub.track) {
+          if (pub.track.kind === 'video') {
+            currentVideoPublication = pub;
+            pub.setVideoQuality(LivekitClient.VideoQuality.HIGH);
+          }
+          attachRemoteTrack(pub.track);
+          foundLive = true;
+        }
+      });
+    });
+    if (foundLive) onTeacherWentLive();
+    else showNotStarted();
+  } catch (err) {
+    loaderIcon.style.display = 'none';
+    statusLine.textContent = 'Could not connect: ' + (err && err.message ? err.message : err);
+  }
 }
 
-retryBtn.addEventListener('click', () => { if (peer) peer.destroy(); attemptJoin(); });
+retryBtn.addEventListener('click', () => { if (room) room.disconnect(); attemptJoin(); });
 
 playPauseBtn.addEventListener('click', () => {
-  if (remoteVideo.paused) { remoteVideo.play(); playPauseBtn.textContent = '⏸'; }
-  else { remoteVideo.pause(); playPauseBtn.textContent = '▶'; }
+  const v = activeVideo();
+  if (v.paused) { v.play(); playPauseBtn.textContent = '⏸'; }
+  else { v.pause(); playPauseBtn.textContent = '▶'; }
 });
 let userMuted = true;
 function updateVolSliderFill(v) {
@@ -517,26 +720,35 @@ function updateVolSliderFill(v) {
 }
 updateVolSliderFill(100);
 
+// Whichever element (remoteVideo for live, replayVideo for rewind) is on
+// screen gets the user's chosen mute/volume; the other one is always kept
+// muted in the background so audio never plays from both at once.
+function syncVolumeToActive() {
+  const active = activeVideo();
+  const inactive = active === remoteVideo ? replayVideo : remoteVideo;
+  active.muted = userMuted;
+  active.volume = (volSlider.value || 100) / 100;
+  inactive.muted = true;
+}
+
 volBtn.addEventListener('click', () => {
-  remoteVideo.muted = !remoteVideo.muted;
-  userMuted = remoteVideo.muted;
-  if (remoteVideo.muted) { volSlider.value = 0; volBtn.textContent = '🔇'; updateVolSliderFill(0); }
+  userMuted = !userMuted;
+  if (userMuted) { volSlider.value = 0; volBtn.textContent = '🔇'; updateVolSliderFill(0); }
   else {
     if (volSlider.value == 0) volSlider.value = 100;
-    remoteVideo.volume = volSlider.value / 100;
-    remoteVideo.play().catch(() => {});
     volBtn.textContent = volSlider.value < 50 ? '🔉' : '🔊';
     updateVolSliderFill(volSlider.value);
   }
+  syncVolumeToActive();
+  activeVideo().play().catch(() => {});
 });
 volSlider.addEventListener('input', () => {
   const v = parseInt(volSlider.value, 10);
-  remoteVideo.muted = v === 0;
-  userMuted = remoteVideo.muted;
-  remoteVideo.volume = v / 100;
+  userMuted = v === 0;
   volBtn.textContent = v === 0 ? '🔇' : (v < 50 ? '🔉' : '🔊');
   updateVolSliderFill(v);
-  if (v > 0) remoteVideo.play().catch(() => {});
+  syncVolumeToActive();
+  if (v > 0) activeVideo().play().catch(() => {});
 });
 const rotateBtn = document.getElementById('rotateBtn');
 const exitRotateBtn = document.getElementById('exitRotateBtn');
@@ -599,8 +811,21 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 /* ===== Playback quality (data-saver) — a student on a slow connection can
-   pick Low/Medium so the teacher's stream sends less data to just them,
-   using per-connection WebRTC encoding limits rather than a fixed setting. */
+   pick Low/Medium so the stream sends less data to just them. LiveKit's SFU
+   supports this natively per-subscriber (no need to ask the teacher to
+   re-encode anything, and no effect on any other student). "Auto" lets
+   LiveKit's own adaptive logic decide, which is what it does by default. */
+function applyQualityPref(q) {
+  if (!currentVideoPublication || !currentVideoPublication.setVideoQuality) return;
+  const map = {
+    low: LivekitClient.VideoQuality.LOW,
+    medium: LivekitClient.VideoQuality.MEDIUM,
+    high: LivekitClient.VideoQuality.HIGH,
+    auto: LivekitClient.VideoQuality.HIGH
+  };
+  currentVideoPublication.setVideoQuality(map[q] || LivekitClient.VideoQuality.HIGH);
+}
+
 qualityBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   qualityMenu.classList.toggle('show');
@@ -612,7 +837,7 @@ qualityMenu.querySelectorAll('.quality-opt').forEach(opt => {
     qualityMenu.querySelectorAll('.quality-opt').forEach(o => o.classList.remove('active'));
     opt.classList.add('active');
     qualityMenu.classList.remove('show');
-    studentDocRef().set({ qualityPref: opt.dataset.q }, { merge: true });
+    applyQualityPref(opt.dataset.q);
   });
 });
 
@@ -640,6 +865,20 @@ emojiPopup.querySelectorAll('.emoji-opt').forEach(btn => {
 });
 emojiToggleBtn.addEventListener('click', () => { if (!emojiToggleBtn.disabled) emojiPopup.classList.toggle('show'); });
 
+const floatingReactions = document.getElementById('floatingReactions');
+function spawnFloatingEmoji(emoji) {
+  const el = document.createElement('span');
+  el.className = 'floating-emoji';
+  el.textContent = emoji;
+  el.style.left = (8 + Math.random() * 78) + '%';
+  el.style.setProperty('--rot-start', (Math.random() * 16 - 8) + 'deg');
+  el.style.setProperty('--rot-end', (Math.random() * 24 - 12) + 'deg');
+  el.style.animationDuration = (2.1 + Math.random() * 0.9) + 's';
+  floatingReactions.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+let reactionsFirstLoadDone = false;
 function listenReactions() {
   reactionsRef().orderBy('ts', 'asc').limitToLast(500).onSnapshot(snap => {
     const totals = {};
@@ -648,6 +887,15 @@ function listenReactions() {
       totals[r.emoji] = (totals[r.emoji] || 0) + 1;
     });
     reactionTally.innerHTML = Object.entries(totals).map(([e, c]) => '<span class="reaction-chip">' + e + ' ' + c + '</span>').join('');
+
+    // Only float NEW reactions (added after we started listening), not the
+    // whole history replaying on page load.
+    if (reactionsFirstLoadDone) {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') spawnFloatingEmoji(change.doc.data().emoji);
+      });
+    }
+    reactionsFirstLoadDone = true;
   });
 }
 
@@ -714,6 +962,27 @@ const pollOptionsEl = document.getElementById('pollOptionsEl');
 const pollResultsArea = document.getElementById('pollResultsArea');
 const pollStatusEl = document.getElementById('pollStatusEl');
 
+const leaderboardArea = document.getElementById('leaderboardArea');
+const leaderboardBody = document.getElementById('leaderboardBody');
+
+/* Small, read-only leaderboard by quiz correct-answers (quizScore) — same
+   field the teacher panel increments when a quiz poll closes. Shown to
+   students right after any poll's results, quiz or not, so there's always
+   something to look at post-poll. */
+function listenLeaderboard() {
+  roomRef().collection('students').orderBy('quizScore', 'desc').limit(10).onSnapshot(snap => {
+    const rows = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if ((d.quizScore || 0) > 0) rows.push({ name: d.name || 'Student', score: d.quizScore || 0 });
+    });
+    leaderboardBody.innerHTML = rows.length
+      ? rows.map((r, i) => '<div class="poll-bar-row" style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>' + (i + 1) + '. ' + escapeHtml(r.name) + '</span><span style="font-weight:700;">' + r.score + ' correct</span></div>').join('')
+      : '<div class="poll-status">No quiz answers yet — keep an eye out for the next quiz poll!</div>';
+  });
+}
+listenLeaderboard();
+
 function renderResultsBars(data) {
   const votes = data.votes || {};
   const counts = new Array(data.options.length).fill(0);
@@ -721,7 +990,8 @@ function renderResultsBars(data) {
   const total = counts.reduce((a, b) => a + b, 0) || 1;
   pollResultsArea.innerHTML = data.options.map((opt, i) => {
     const pct = Math.round((counts[i] / total) * 100);
-    return '<div class="poll-bar-row"><div class="poll-bar-label"><span>' + escapeHtml(opt) + '</span><span>' + counts[i] + '</span></div><div class="poll-bar-track"><div class="poll-bar-fill" style="width:' + pct + '%"></div></div></div>';
+    const isCorrect = data.correctIndex === i;
+    return '<div class="poll-bar-row"><div class="poll-bar-label"><span>' + (isCorrect ? '✅ ' : '') + escapeHtml(opt) + '</span><span>' + counts[i] + '</span></div><div class="poll-bar-track"><div class="poll-bar-fill" style="width:' + pct + '%' + (isCorrect ? '; background:#3ba55d' : '') + '"></div></div></div>';
   }).join('');
 }
 
@@ -737,13 +1007,16 @@ function listenPoll() {
       pollOptionsEl.innerHTML = '';
       renderResultsBars(data);
       pollStatusEl.textContent = 'This poll is closed — results are above.';
+      leaderboardArea.style.display = 'block';
     } else if (voted) {
       pollOptionsEl.innerHTML = '';
       pollResultsArea.innerHTML = '';
       pollStatusEl.textContent = 'Your vote has been recorded ✓ — waiting for results.';
+      leaderboardArea.style.display = 'none';
     } else {
       pollResultsArea.innerHTML = '';
       pollStatusEl.textContent = '';
+      leaderboardArea.style.display = 'none';
       pollOptionsEl.innerHTML = data.options.map((opt, i) =>
         '<button class="poll-opt-btn" data-i="' + i + '">' + escapeHtml(opt) + '</button>'
       ).join('');
@@ -757,116 +1030,308 @@ function listenPoll() {
   });
 }
 
-/* ===== Instant Replay (last ~1 minute, client-side only) =====
-   There's no server-side recording, so this is a browser-only "jugaad":
-   the incoming live stream is recorded in rolling 10-second segments in
-   the background. Each segment is its own small recording (so it has a
-   valid, playable header), and we keep the last 6 (~60s). Tap the ⏪
-   button in the controls to jump into replay — it plays right in the same
-   full-size video, then ⏮/⏭ step you through the buffered segments.
-   Tap the button again (it turns red) to jump back to live.
-   It resets if the page is refreshed or the stream drops. */
-const REPLAY_SEGMENT_MS = 10000;
-const REPLAY_MAX_SEGMENTS = 6;
-let replaySegments = [];
-let segRecorder = null;
-let segChunks = [];
-let currentLiveStream = null;
-let isLiveMode = true;
-let currentSegIndex = -1;
+/* ===== Class-Length Rewind (DVR-style, client-side only, MSE-backed) =====
+   There's no server-side recording for this. Two <video> elements share the
+   same spot on screen:
+     - remoteVideo: always attached to the raw live WebRTC stream. This is
+       what's shown normally, and it keeps receiving frames continuously
+       even while hidden, so switching back to it is instant.
+     - replayVideo: hidden, permanently attached (from the moment the class
+       starts) to a single MediaSource. In the background, the live stream
+       is fed into it continuously via one uninterrupted MediaRecorder
+       (~1-second chunks, never stopped/restarted) — that continuity is
+       what makes scrubbing smooth: seeking just moves currentTime within
+       one real buffer, which the browser's own video engine handles
+       natively, instead of swapping between separate reloaded clips.
+   YouTube-Live style: one scrub line spans the whole class, always on
+   screen, no button needed. While live, the playhead just sits pinned to
+   the right (live) edge as the line keeps growing. Drag/tap anywhere on
+   the line — even without ever "starting" replay first — to jump straight
+   to that moment; it hands off to replayVideo automatically. Letting it
+   play (or dragging back to the right edge) auto-hands-off back to the
+   real live feed once it catches up, just like YouTube's live rewind.
+   Everything here lives in browser memory only, so it resets on refresh.
+   As a safety net on very long sessions, the oldest few minutes get
+   trimmed out once the buffer passes REPLAY_MAX_SECONDS (~4 hours) instead
+   of growing forever. On a browser without MediaSource/MediaRecorder
+   support, the whole scrub line simply hides itself — live viewing is
+   unaffected. */
+const REPLAY_TIMESLICE_MS = 1000;      // how often chunks are handed off — small = fine-grained scrub
+const REPLAY_MAX_SECONDS = 4 * 3600;   // ~4 hours safety cap, not a normal-use limit
+const REPLAY_TRIM_SECONDS = 300;       // trim 5 min at a time once over the cap, not every append
+const REPLAY_LIVE_EDGE_MARGIN = 0.75;  // seconds of slack before "caught up" hands off to the real live feed
 
-function startReplayRecorder(stream) {
-  stopReplayRecorder();
-  isLiveMode = true;
-  if (!window.MediaRecorder) return;
-  let mimeType = 'video/webm;codecs=vp8,opus';
-  if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+let mseInitialized = false;
+let mediaSource = null;
+let sourceBuffer = null;
+let mseRecorder = null;
+let mseOpQueue = []; // queued {type:'append', buf} / {type:'remove', start, end} ops, run one at a time
+let sliderDragging = false;
 
-  function recordSegment() {
-    if (!stream.active) return;
-    segChunks = [];
-    try { segRecorder = new MediaRecorder(stream, { mimeType }); }
+// While a late-joiner's missed portion is still being pulled in from Mega,
+// this student's own live chunks are held here (in arrival order) instead
+// of going straight into mseOpQueue — so the historical segments always
+// land in the buffer BEFORE anything recorded from just now, keeping the
+// whole timeline in the right order. Once history is loaded, these get
+// flushed in after it. If there's nothing to catch up on (recording wasn't
+// running, or this student was there from the start), this list of
+// "pending" chunks stays empty and everything behaves exactly as before.
+let historicalLoadPending = false;
+let pendingLiveChunks = [];
+
+function initMseBuffer(stream) {
+  teardownMseBuffer();
+  if (!window.MediaRecorder || !window.MediaSource) { replayNav.style.display = 'none'; return; } // no rewind support here; live keeps working fine
+  replayNav.style.display = 'flex';
+
+  mediaSource = new MediaSource();
+  replayVideo.src = URL.createObjectURL(mediaSource);
+
+  mediaSource.addEventListener('sourceopen', () => {
+    let mimeType = 'video/webm;codecs=vp8,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType) || !MediaSource.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    try { sourceBuffer = mediaSource.addSourceBuffer(mimeType); }
     catch (e) { return; }
-
-    segRecorder.ondataavailable = (e) => { if (e.data && e.data.size) segChunks.push(e.data); };
-    segRecorder.onstop = () => {
-      if (segChunks.length) {
-        const blob = new Blob(segChunks, { type: mimeType });
-        replaySegments.push({ blob, url: URL.createObjectURL(blob) });
-        if (replaySegments.length > REPLAY_MAX_SEGMENTS) {
-          const old = replaySegments.shift();
-          URL.revokeObjectURL(old.url);
-          if (currentSegIndex >= 0) currentSegIndex = Math.max(0, currentSegIndex - 1);
+    sourceBuffer.addEventListener('updateend', () => {
+      maybeTrimBuffer();
+      pumpMseQueue();
+      // Keep the line's full length up to date at all times (not just while
+      // replaying), and while live, keep the playhead pinned to the right
+      // (live) edge as the buffer grows — exactly like YouTube's live bar.
+      if (!sliderDragging) {
+        refreshSliderBounds();
+        if (isLiveMode) {
+          replaySlider.value = replaySlider.max;
+          updateReplaySliderFill();
+          const r = getBufferedRange();
+          if (r) updateReplayLabel(r.end);
         }
       }
-      if (stream.active) recordSegment();
+    });
+
+    try { mseRecorder = new MediaRecorder(stream, { mimeType }); }
+    catch (e) { return; }
+    mseRecorder.ondataavailable = (e) => {
+      if (!e.data || !e.data.size) return;
+      e.data.arrayBuffer().then(buf => {
+        if (historicalLoadPending) { pendingLiveChunks.push(buf); return; } // hold until history is queued first
+        mseOpQueue.push({ type: 'append', buf }); pumpMseQueue();
+      });
     };
-    segRecorder.start();
-    setTimeout(() => { if (segRecorder && segRecorder.state === 'recording') segRecorder.stop(); }, REPLAY_SEGMENT_MS);
-  }
-  recordSegment();
+    mseRecorder.start(REPLAY_TIMESLICE_MS); // one continuous recording — never stop/restart, that's what keeps it seamless
+
+    // Late-join catch-up: if the teacher has a Mega cloud recording running
+    // for this class, pull in whatever segments were already uploaded
+    // before this student connected, so they can rewind through the whole
+    // class, not just the part after they joined.
+    if (activeRecordingSessionId) loadHistoricalSegments(activeRecordingSessionId);
+  }, { once: true });
 }
 
-function stopReplayRecorder() {
-  if (segRecorder && segRecorder.state === 'recording') { try { segRecorder.stop(); } catch (e) {} }
-  segRecorder = null;
-  replaySegments.forEach(s => URL.revokeObjectURL(s.url));
-  replaySegments = [];
-  currentSegIndex = -1;
-  isLiveMode = true;
-  currentLiveStream = null;
+/* ===== Late-join catch-up (free, uses the same Mega recording the teacher
+   already saves to) =====
+   The teacher's page uploads each ~20s recording segment to Mega as soon as
+   it's ready and writes its public link to
+   rooms/{ROOM_ID}/recordings/{sessionId}/segments/{00000, 00001, ...}
+   Those segments are pieces of ONE continuous recording (the teacher's
+   MediaRecorder is never stopped/restarted mid-segment), so downloading
+   them in order and appending them to this student's sourceBuffer — right
+   before their own live chunks — reconstructs a single, seekable timeline
+   covering the whole class, even the part before this student joined.
+   Uses megajs' public-link download (no Mega login needed, same library
+   the teacher page already loads). If anything here fails (offline Mega,
+   a missing segment, etc.) it just gives up quietly — live viewing and
+   this student's own from-here-onward rewind are never affected. */
+async function loadHistoricalSegments(sessionId) {
+  if (!window.__MegaFile) return;
+  historicalLoadPending = true;
+  statusLine.textContent = 'Catching you up on the class so far…';
+  try {
+    const snap = await db.collection('rooms').doc(ROOM_ID)
+      .collection('recordings').doc(sessionId).collection('segments')
+      .orderBy('index').get();
+    for (const doc of snap.docs) {
+      const url = doc.data() && doc.data().url;
+      if (!url) continue;
+      try {
+        const file = window.__MegaFile.fromURL(url);
+        await file.loadAttributes();
+        const data = await file.downloadBuffer();
+        mseOpQueue.push({ type: 'append', buf: data.buffer ? data.buffer : data });
+      } catch (segErr) {
+        // one bad/expired segment shouldn't block the rest of the catch-up
+        continue;
+      }
+    }
+  } catch (err) {
+    // no recording for this session, or Firestore/Mega unreachable — fine,
+    // student just won't be able to rewind past their own join time
+  } finally {
+    // Now safe to release this student's own live chunks — they continue
+    // the timeline right after the historical segments.
+    historicalLoadPending = false;
+    pendingLiveChunks.forEach(buf => mseOpQueue.push({ type: 'append', buf }));
+    pendingLiveChunks = [];
+    pumpMseQueue();
+    if (statusLine.textContent === 'Catching you up on the class so far…') {
+      statusLine.textContent = 'You are connected to the live class.';
+    }
+  }
 }
+
+function pumpMseQueue() {
+  if (!sourceBuffer || sourceBuffer.updating || !mseOpQueue.length) return;
+  const op = mseOpQueue.shift();
+  try {
+    if (op.type === 'append') sourceBuffer.appendBuffer(op.buf);
+    else sourceBuffer.remove(op.start, op.end);
+  } catch (e) { pumpMseQueue(); }
+}
+
+function maybeTrimBuffer() {
+  if (!sourceBuffer || !sourceBuffer.buffered.length) return;
+  const start = sourceBuffer.buffered.start(0);
+  const end = sourceBuffer.buffered.end(sourceBuffer.buffered.length - 1);
+  if (end - start > REPLAY_MAX_SECONDS) mseOpQueue.push({ type: 'remove', start, end: start + REPLAY_TRIM_SECONDS });
+}
+
+function teardownMseBuffer() {
+  if (mseRecorder && mseRecorder.state !== 'inactive') { try { mseRecorder.stop(); } catch (e) {} }
+  mseRecorder = null;
+  mseOpQueue = [];
+  historicalLoadPending = false;
+  pendingLiveChunks = [];
+  if (replayVideo.src) { URL.revokeObjectURL(replayVideo.src); replayVideo.removeAttribute('src'); }
+  mediaSource = null;
+  sourceBuffer = null;
+  isLiveMode = true;
+  replayVideo.style.display = 'none';
+  remoteVideo.style.display = 'block';
+}
+
+function getBufferedRange() {
+  if (!sourceBuffer || !sourceBuffer.buffered.length) return null;
+  const b = sourceBuffer.buffered;
+  return { start: b.start(0), end: b.end(b.length - 1) };
+}
+
+function fmtMMSS(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60), s = Math.floor(totalSeconds % 60);
+  return (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
+}
+
+function refreshSliderBounds() {
+  const r = getBufferedRange();
+  if (!r) return;
+  replaySlider.min = String(Math.floor(r.start));
+  replaySlider.max = String(Math.max(Math.floor(r.start), Math.floor(r.end)));
+  updateReplaySliderFill();
+}
+
+// Red = how much of the class is "covered" up to the playhead (just like
+// YouTube's watched portion); rest of the line stays light/white.
+function updateReplaySliderFill() {
+  const min = parseFloat(replaySlider.min) || 0;
+  const max = parseFloat(replaySlider.max) || 0;
+  const val = parseFloat(replaySlider.value) || 0;
+  const pct = max > min ? Math.min(100, Math.max(0, ((val - min) / (max - min)) * 100)) : 100;
+  replaySlider.style.background = 'linear-gradient(to right, var(--red) ' + pct + '%, rgba(255,255,255,0.3) ' + pct + '%)';
+}
+
+function updateReplayLabel(t) {
+  const r = getBufferedRange();
+  if (!r) return;
+  const secondsAgo = Math.max(0, r.end - t);
+  replayNavLabel.textContent = secondsAgo < 1 ? 'Live edge' : ('-' + fmtMMSS(secondsAgo));
+}
+
+// Replay speed is the student's own choice now — tap the badge to cycle
+// through these, capped at 2x (no forced speed-up during replay).
+const REPLAY_SPEED_OPTIONS = [1, 1.25, 1.5, 1.75, 2];
+let replaySpeedIndex = 0; // starts at 1x
+
+function applyReplaySpeed() {
+  const speed = REPLAY_SPEED_OPTIONS[replaySpeedIndex];
+  replayVideo.playbackRate = speed;
+  speedBadge.textContent = (speed % 1 === 0 ? speed.toFixed(0) : speed) + 'x';
+}
+
+speedBadge.addEventListener('click', () => {
+  replaySpeedIndex = (replaySpeedIndex + 1) % REPLAY_SPEED_OPTIONS.length;
+  applyReplaySpeed();
+});
 
 function goLive() {
   isLiveMode = true;
-  currentSegIndex = -1;
-  remoteVideo.removeAttribute('src');
-  remoteVideo.srcObject = currentLiveStream;
-  remoteVideo.muted = userMuted;
-  remoteVideo.play().catch(() => {});
-  replayNav.style.display = 'none';
-  replayToggleBtn.classList.remove('active');
+  replayVideo.pause();
+  replayVideo.style.display = 'none';
+  remoteVideo.style.display = 'block';
   livePill.style.opacity = '1';
-}
-
-function showReplaySegment(i) {
-  if (i < 0 || i >= replaySegments.length) return;
-  isLiveMode = false;
-  currentSegIndex = i;
-  const seg = replaySegments[i];
-  remoteVideo.srcObject = null;
-  remoteVideo.src = seg.url;
-  remoteVideo.muted = userMuted;
-  remoteVideo.play().catch(() => {});
-
-  const stepsAgo = replaySegments.length - i;
-  replayNavLabel.textContent = stepsAgo <= 1 ? 'Most recent 10s' : (stepsAgo * 10) + 's ago';
-  replayPrevBtn.disabled = i === 0;
-  replayNextBtn.disabled = false;
-  replayNav.style.display = 'flex';
-  replayToggleBtn.classList.add('active');
-  livePill.style.opacity = '0.4';
-}
-
-replayToggleBtn.addEventListener('click', () => {
-  if (isLiveMode) {
-    if (!replaySegments.length) return; // buffer still building, nothing to show yet
-    showReplaySegment(replaySegments.length - 1);
-  } else {
-    goLive();
+  speedBadge.classList.remove('show');
+  replayNavLabel.classList.remove('show');
+  // Line stays on screen — just snap the playhead back to the live edge.
+  if (!sliderDragging) {
+    refreshSliderBounds();
+    replaySlider.value = replaySlider.max;
+    updateReplaySliderFill();
+    const r = getBufferedRange();
+    if (r) updateReplayLabel(r.end);
   }
-});
-replayPrevBtn.addEventListener('click', () => showReplaySegment(currentSegIndex - 1));
-replayNextBtn.addEventListener('click', () => {
-  if (currentSegIndex + 1 >= replaySegments.length) goLive();
-  else showReplaySegment(currentSegIndex + 1);
-});
+  syncVolumeToActive();
+  remoteVideo.play().catch(() => {});
+}
 
-remoteVideo.addEventListener('ended', () => {
+function enterReplayMode() {
+  isLiveMode = false;
+  replayVideo.style.display = 'block';
+  remoteVideo.style.display = 'none';
+  applyReplaySpeed(); // keeps whatever speed the student last picked, default 1x
+  livePill.style.opacity = '0.4';
+  speedBadge.classList.add('show');
+  replayNavLabel.classList.add('show');
+  syncVolumeToActive();
+}
+
+// The real seek — sets currentTime directly on the one continuous MSE
+// buffer, which the browser scrubs natively (fast, no reload). Safe to call
+// on every slider 'input' event while dragging, which is what makes this
+// actually feel smooth.
+function seekReplay(t) {
+  const r = getBufferedRange();
+  if (!r) return;
+  const clamped = Math.min(Math.max(t, r.start), Math.max(r.start, r.end - 0.2));
+  if (isLiveMode) enterReplayMode();
+  replayVideo.currentTime = clamped;
+  replayVideo.play().catch(() => {});
+  updateReplayLabel(clamped);
+  if (!sliderDragging) replaySlider.value = String(Math.floor(clamped));
+  updateReplaySliderFill();
+}
+
+// No button to press — the line is always there from the start of class to
+// now. Just drag or tap anywhere on it to scrub; it auto-enters replay if
+// currently live. Tap the LIVE pill to jump straight back to now.
+livePill.addEventListener('click', () => { if (!isLiveMode) goLive(); });
+
+replaySlider.addEventListener('mousedown', () => { sliderDragging = true; });
+replaySlider.addEventListener('touchstart', () => { sliderDragging = true; });
+replaySlider.addEventListener('input', () => {
+  const t = parseFloat(replaySlider.value);
+  if (!isNaN(t)) seekReplay(t);
+  updateReplaySliderFill();
+});
+['mouseup', 'touchend'].forEach(evt => replaySlider.addEventListener(evt, () => { sliderDragging = false; }));
+
+// While replaying, keep the slider/label in sync with actual playback, and
+// automatically hand off to the real live feed once caught up — a smooth,
+// YouTube-style "you're back to live" transition instead of a hard stop.
+replayVideo.addEventListener('timeupdate', () => {
   if (isLiveMode) return;
-  // Clip finished — automatically step forward to the next, more recent segment
-  if (currentSegIndex >= 0 && currentSegIndex < replaySegments.length - 1) showReplaySegment(currentSegIndex + 1);
-  else goLive();
+  const r = getBufferedRange();
+  if (!r) return;
+  if (replayVideo.currentTime >= r.end - REPLAY_LIVE_EDGE_MARGIN) { goLive(); return; }
+  if (!sliderDragging) { replaySlider.value = String(Math.floor(replayVideo.currentTime)); updateReplaySliderFill(); }
+  updateReplayLabel(replayVideo.currentTime);
 });
 
 /* ===== Start everything now that all elements/functions are ready ===== */
